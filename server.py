@@ -1,14 +1,17 @@
 #!/usr/bin/python3
 # server.py
 
-# import sys
 import socket
+from ftplib import FTP
+
 
 # Create a socket object
 server_socket = socket.socket()
 
 # Get host name
 server_host = socket.gethostname()
+print (('Host is', server_host))
+print (('with IP addr', socket.gethostbyname(server_host)))
 
 # Reserve the port
 server_port = 12345
