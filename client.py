@@ -16,7 +16,15 @@ print (('with IP addr', socket.gethostbyname(client_host)))
 # Reserve the port
 client_port = 12345
 
-# Connect to the host on the port
+# Display ftp prompt
+print ('Type y to try connecting to the server')
+while input("ftp>") != 'y':
+    pass
+
+# Match the ftp command with what to do here
+
+
+# E.g. Connect to the host on the port
 client_socket.connect((client_host, client_port))
 
 print ("Received from server:")
