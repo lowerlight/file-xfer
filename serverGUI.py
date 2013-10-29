@@ -3,113 +3,108 @@
 
 VERSION = "0.0 RELEASE"
 import os, tkinter, threading
-#from tkinter import *
 from tkinter import ttk, constants
 
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
-from pyftpdlib.servers import FTPServer
+from pyftpdlib.servers import ThreadedFTPServer
 
-tk = tkinter.Tk()
+class ServerApp(tkinter.Frame):
+    def __init__(self, master=None):
+        tkinter.Frame.__init__(self, master)
+        self.grid(row=0, column=0)
 
-# Initial values
-username = tkinter.StringVar()
-username.set("user")
+        self.initialise()
 
-password = tkinter.StringVar()
-password.set("passwd")
+        # Main Frame
+        master.geometry("480x120")
+        master.minsize(240,120)
+        master.title("FTP Server")
 
-root_dir = tkinter.StringVar()
-root_dir.set(os.getcwd() + os.sep)
+        self.create_server_control_frame()
+        self.create_start_button()
+        self.create_stop_button()
+        self.create_state_frame()
 
-current_state = tkinter.StringVar()
-current_state.set("not running")
+        self.authorizer = DummyAuthorizer()
 
-listen_ip = tkinter.StringVar()
-listen_ip.set("127.0.0.1")
+        self.handler = FTPHandler
+        self.handler.authorizer = self.authorizer
+        self.handler.banner = "FTP Server ver %s is ready" % VERSION #does this work in Python3?
 
-listen_port = tkinter.StringVar()
-listen_port.set("21")
+        self.address = ("127.0.0.1", int(21))
 
+        self.server = ThreadedFTPServer(self.address, self.handler)
+        # change this to self.server = MultiprocessFTPServer(self.address, self.handler)
+        # to allow spawning a new process when another client connects
+        self.server.max_cons = 256
+        self.server.max_cons_per_ip = 5
 
+    def create_server_control_frame(self):
+        # Server Control Frame
+        self.start_stop_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
+        self.start_stop_frame.grid(row=0, column=0, columnspan=4)
+        ttk.Label(self.start_stop_frame, text="Server Control ").grid(row=0, column=0)
 
-# Callback handlers
+    def create_start_button(self):
+        self.start_button = ttk.Button(self.start_stop_frame, text="Start", command=self.start_server)
+        self.start_button.grid(row=0, column=2)
 
-# temp global declarator
-authorizer = None
-handler = None
-server = None
+    def create_stop_button(self):
+        self.stop_button = ttk.Button(self.start_stop_frame, text="Stop", state=['disabled'],
+                        command=self.stop_server)
+        self.stop_button.grid(row=0, column=3)
 
-# class Action:
-def start_server():
-    global authorizer   #temp
-    authorizer = DummyAuthorizer()
-    authorizer.add_user(username.get(), password.get(), str(root_dir.get()), 'elradfmw')
+    def create_state_frame(self):
+        # State Frame
+        state_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
+        state_frame.grid(row=1, column=0, columnspan=3)
+        ttk.Label(state_frame, text="Server State").grid(row=1, column=0)
 
-    global handler #temp
-    handler = FTPHandler
-    handler.authorizer = authorizer
-    handler.banner = "FTP Server ver %s is ready" % VERSION #does this work in Python3?
+        state_value = ttk.Label(state_frame, textvariable=self.current_state, foreground='blue')
+        state_value.grid(row=1, column=2)
 
-    address = (listen_ip.get(), int(listen_port.get()))
+    def initialise(self):
+        # Initial values
+        self.username = tkinter.StringVar()
+        self.username.set("user")
 
-    global server  #temp
-    server = FTPServer(address, handler)
-    server.max_cons = 256
-    server.max_cons_per_ip = 5
+        self.password = tkinter.StringVar()
+        self.password.set("passwd")
 
-    start_button.state(['disabled'])
-    stop_button.state(['!disabled'])
-    current_state.set("RUNNING")
+        self.root_dir = tkinter.StringVar()
+        self.root_dir.set(os.getcwd() + os.sep)
 
-    threading.Thread(target=server.serve_forever).start()
+        self.current_state = tkinter.StringVar()
+        self.current_state.set("not running")
 
-def stop_server():
-    global authorizer   #temp
-    global handler #temp
-    global server  #temp
+        self.listen_ip = tkinter.StringVar()
+        self.listen_ip.set("127.0.0.1")
 
-    server.close_all()
+        self.listen_port = tkinter.StringVar()
+        self.listen_port.set("21")
 
-    del authorizer   #temp
-    del handler #temp
-    del server  #temp
+    def start_server(self):
+        self.authorizer.add_user(self.username.get(), self.password.get(), str(self.root_dir.get()),
+            'elradfmw')
+        self.address = (self.listen_ip.get(), int(self.listen_port.get()))
+        self.start_button.state(['disabled'])
+        self.stop_button.state(['!disabled'])
+        self.current_state.set("RUNNING")
+        self.server.serve_forever() # WARNING: Must find a way to prevent this from blocking!
 
-    start_button.state(['!disabled'])
-    stop_button.state(['disabled'])
-    current_state.set("NOT RUNNING")
+    def stop_server(self):
+        self.server.close_all()
+        self.authorizer.remove_user(self.username.get())
+        self.start_button.state(['!disabled'])
+        self.stop_button.state(['disabled'])
+        self.current_state.set("NOT RUNNING")
 
-# Main Frame
-
-tk.geometry("480x120")
-tk.minsize(240,120)
-tk.title("FTP Server")
-
-# Server Control Frame
-start_stop_frame = ttk.Frame(tk, relief=constants.SOLID, borderwidth=1)
-start_stop_frame.grid(row=0, column=0, columnspan=4)
-ttk.Label(start_stop_frame, text="Server Control ").grid(row=0, column=0)
-
-start_button = ttk.Button(start_stop_frame, text="Start", command=start_server)
-start_button.grid(row=0, column=2)
-
-stop_button = ttk.Button(start_stop_frame, text="Stop", state=['disabled'], command=stop_server)
-stop_button.grid(row=0, column=3)
-
-# State Frame
-state_frame = ttk.Frame(tk, relief=constants.SOLID, borderwidth=1)
-state_frame.grid(row=1, column=0, columnspan=3)
-ttk.Label(state_frame, text="Server State").grid(row=1, column=0)
-
-state_value = ttk.Label(state_frame, textvariable=current_state, foreground='blue')
-state_value.grid(row=1, column=2)
-
-# Main
-tk.mainloop()
-try:
-    server.close_all()
-except:
-    pass
-
-# if __name__ == '__main__':
-#     main()
+if __name__ == '__main__':
+    tk = tkinter.Tk()
+    app = ServerApp(master=tk)
+    app.mainloop()
+    try:
+        app.server.close_all()
+    except:
+        pass
