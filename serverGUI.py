@@ -113,11 +113,19 @@ class ServerApp(tkinter.Frame):
                 self.root_dirTree.insert(parent, constants.END, text=child,
                     values=[child_path, 'directory', filesize])
 
+    def populate_parent(self):
+        curr_dir = self.root_dir.get()
+        parent = self.root_dirTree.insert('', constants.END, text=curr_dir,
+            values=[curr_dir, 'directory'])
+        self.populate_tree(parent, curr_dir, os.listdir(curr_dir))
+
     def update_tree(self, event):
         # event: unused variable
         node_id = self.root_dirTree.focus()
         if self.root_dirTree.parent(node_id):
-            top_child = self.root_dirTree.get_children(node_id)[0]  #TODO: double click cause warng
+            # TODO: double click cause warning, but either need to bind it with another action
+            # or replace with a try catch block later
+            top_child = self.root_dirTree.get_children(node_id)[0]
             if self.root_dirTree.item(top_child, option='text') == 'dummy':
                 self.root_dirTree.delete(top_child)
                 tree_path = self.root_dirTree.set(node_id, 'fullpath')
@@ -144,11 +152,7 @@ class ServerApp(tkinter.Frame):
         yScrollBar.grid(row=8, column=1, sticky=constants.NS)
         xScrollBar.grid(row=9, column=0, sticky=constants.EW)
 
-        curr_dir = self.root_dir.get()
-        parent = self.root_dirTree.insert('', constants.END, text=curr_dir,
-            values=[curr_dir, 'directory'])
-        self.populate_tree(parent, curr_dir, os.listdir(curr_dir))
-
+        self.populate_parent()
         self.root_dirTree.bind('<<TreeviewOpen>>', self.update_tree)
 
     def initialise(self):
@@ -198,16 +202,13 @@ class ServerApp(tkinter.Frame):
         self.current_state.set("NOT RUNNING")
 
     def select_dir(self):
+        # Delete old root_dir
+        self.root_dirTree.delete(self.root_dirTree.get_children(''))
+
         self.root_dir.set(filedialog.askdirectory().replace("/" , str(os.sep)))
 
-        # Detach old root_dir
-
-
         # Attach new root_dir
-        curr_dir = self.root_dir.get()
-        parent = self.root_dirTree.insert('', constants.END, text=curr_dir,
-            values=[curr_dir, 'directory'])
-        self.populate_tree(parent, curr_dir, os.listdir(curr_dir))
+        self.populate_parent()
 
 if __name__ == '__main__':
     root = tkinter.Tk()
