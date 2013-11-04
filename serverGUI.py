@@ -4,7 +4,6 @@
 VERSION = "0.0 RELEASE"
 import os, tkinter, threading
 from tkinter import ttk, constants, filedialog
-# from tkinter import tix, constants
 
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
@@ -15,11 +14,13 @@ class ServerApp(tkinter.Frame):
         tkinter.Frame.__init__(self, master)
         self.grid(row=0, column=0)
 
+        # May need to move this out
+        self.authorizer = DummyAuthorizer()
         self.initialise()
 
         # Main Frame
         # master.geometry("480x120")
-        master.minsize(640,480)
+        master.minsize(960,480)
         master.title("FTP Server")
 
         # Grid Position (row, column)
@@ -35,8 +36,7 @@ class ServerApp(tkinter.Frame):
         self.create_dir_frame()
         self.create_browse_button()
 
-        # May need to move this out
-        self.authorizer = DummyAuthorizer()
+        self.create_dirTree_frame()
 
         self.handler = FTPHandler
         self.handler.authorizer = self.authorizer
@@ -58,17 +58,34 @@ class ServerApp(tkinter.Frame):
                         command=self.stop_server)
         self.stop_button.grid(row=0, column=3)
 
+    def create_state_frame(self):
+        # State Frame
+        state_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
+        state_frame.grid(row=1, column=0, columnspan=3)
+        ttk.Label(state_frame, text="Server State").grid(row=1, column=0)
+
+        state_value = ttk.Label(state_frame, textvariable=self.current_state, foreground='blue')
+        state_value.grid(row=1, column=2)
+
     def create_input_frame(self):
         self.input_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
         self.input_frame.grid(row=3, column=0, columnspan=3)
 
-        self.username_input = ttk.Entry(self.input_frame, textvariable=self.username)
-        self.username_input.grid(row=3, column=0)
-        ttk.Label(self.input_frame, text="User Name").grid(row=2, column=0)
+        # ttk.Label(self.input_frame, text="User Name").grid(row=2, column=0)
+        # self.username_input = ttk.Entry(self.input_frame, textvariable=self.username)
+        # self.username_input.grid(row=3, column=0)
 
-        self.password_input = ttk.Entry(self.input_frame, textvariable=self.password)
-        self.password_input.grid(row=3, column=1)
-        ttk.Label(self.input_frame, text="Password").grid(row=2, column=1)
+        # ttk.Label(self.input_frame, text="Password").grid(row=2, column=1)
+        # self.password_input = ttk.Entry(self.input_frame, textvariable=self.password)
+        # self.password_input.grid(row=3, column=1)
+
+        ttk.Label(self.input_frame, text="Server Address").grid(row=2, column=2)
+        self.listen_ip_input = ttk.Entry(self.input_frame, textvariable=self.listen_ip)
+        self.listen_ip_input.grid(row=3, column=2)
+
+        ttk.Label(self.input_frame, text="Server Port").grid(row=2, column=3)
+        self.listen_port_input = ttk.Entry(self.input_frame, textvariable=self.listen_port)
+        self.listen_port_input.grid(row=3, column=3)
 
     def create_dir_frame(self):
         self.dir_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
@@ -79,22 +96,60 @@ class ServerApp(tkinter.Frame):
         self.root_dir_input = ttk.Entry(self.dir_frame, width=64, textvariable=self.root_dir)
         self.root_dir_input.grid(row=5, column=0)
 
-    def dir_select_action(self):
-        self.root_dir.set(filedialog.askdirectory().replace("/" , str(os.sep)))
-
     def create_browse_button(self):
         self.browse_button = ttk.Button(self.dir_frame, text="Browse",
-            command=self.dir_select_action)
+            command=self.select_dir)
         self.browse_button.grid(row=5, column=4)
 
-    def create_state_frame(self):
-        # State Frame
-        state_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
-        state_frame.grid(row=1, column=0, columnspan=3)
-        ttk.Label(state_frame, text="Server State").grid(row=1, column=0)
+    def populate_tree(self, parent, fullpath, children):
+        for child in children:
+            child_path = os.path.join(fullpath, child).replace('\\', '/')
+            if os.path.isdir(child_path):
+                child_id = self.root_dirTree.insert(parent, constants.END, text=child,
+                    values=[child_path, 'directory'])
+                self.root_dirTree.insert(child_id, constants.END, text='dummy')
+            else:
+                filesize = os.stat(child_path).st_size
+                self.root_dirTree.insert(parent, constants.END, text=child,
+                    values=[child_path, 'directory', filesize])
 
-        state_value = ttk.Label(state_frame, textvariable=self.current_state, foreground='blue')
-        state_value.grid(row=1, column=2)
+    def update_tree(self, event):
+        # event: unused variable
+        node_id = self.root_dirTree.focus()
+        if self.root_dirTree.parent(node_id):
+            top_child = self.root_dirTree.get_children(node_id)[0]  #TODO: double click cause warng
+            if self.root_dirTree.item(top_child, option='text') == 'dummy':
+                self.root_dirTree.delete(top_child)
+                tree_path = self.root_dirTree.set(node_id, 'fullpath')
+                self.populate_tree(node_id, tree_path, os.listdir(tree_path))
+
+    def create_dirTree_frame(self):
+        self.dirTree_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
+        self.dirTree_frame.grid(row=7, column=0, rowspan=4, columnspan=8)
+
+        ttk.Label(self.dirTree_frame, text="Local").grid(row=6, column=0)
+
+        self.root_dirTree = ttk.Treeview(columns=('fullpath','type','size'), displaycolumns='size')
+        yScrollBar = ttk.Scrollbar(orient=constants.VERTICAL, command=self.root_dirTree.yview)
+        xScrollBar = ttk.Scrollbar(orient=constants.HORIZONTAL, command=self.root_dirTree.xview)
+        self.root_dirTree['yscroll'] = yScrollBar.set
+        self.root_dirTree['xscroll'] = xScrollBar.set
+
+        self.root_dirTree.heading('#0', text='Directory', anchor=constants.W)
+        self.root_dirTree.heading('size', text='Size', anchor=constants.W)
+
+        self.root_dirTree.column('size', stretch=0, width=70)
+
+        self.root_dirTree.grid(row=8, column=0, sticky=constants.NSEW)
+        yScrollBar.grid(row=8, column=1, sticky=constants.NS)
+        xScrollBar.grid(row=9, column=0, sticky=constants.EW)
+
+        curr_dir = self.root_dir.get()
+        parent = self.root_dirTree.insert('', constants.END, text=curr_dir,
+            values=[curr_dir, 'directory'])
+        self.populate_tree(parent, curr_dir, os.listdir(curr_dir))
+
+        self.root_dirTree.bind('<<TreeviewOpen>>', self.update_tree)
 
     def initialise(self):
         # Initial values
@@ -116,16 +171,17 @@ class ServerApp(tkinter.Frame):
         self.listen_port = tkinter.StringVar()
         self.listen_port.set("21")
 
-    def start_server(self):
+        # This can be set up only once and saved in a database
+        self.authorizer.add_user(self.username.get(), self.password.get(), self.root_dir.get(),
+            'elradfmw')
 
+    def start_server(self):
         self.address = ("127.0.0.1", int(21))
 
         self.server = ThreadedFTPServer(self.address, self.handler)
         self.server.max_cons = 256
         self.server.max_cons_per_ip = 5
 
-        self.authorizer.add_user(self.username.get(), self.password.get(), str(self.root_dir.get()),
-            'elradfmw')
         self.address = (self.listen_ip.get(), int(self.listen_port.get()))
         print(self.address)
         self.start_button.state(['disabled'])
@@ -136,14 +192,25 @@ class ServerApp(tkinter.Frame):
 
     def stop_server(self):
         self.server.close_all()
-        self.authorizer.remove_user(self.username.get())
+        # self.authorizer.remove_user(self.username.get())
         self.start_button.state(['!disabled'])
         self.stop_button.state(['disabled'])
         self.current_state.set("NOT RUNNING")
 
+    def select_dir(self):
+        self.root_dir.set(filedialog.askdirectory().replace("/" , str(os.sep)))
+
+        # Detach old root_dir
+
+
+        # Attach new root_dir
+        curr_dir = self.root_dir.get()
+        parent = self.root_dirTree.insert('', constants.END, text=curr_dir,
+            values=[curr_dir, 'directory'])
+        self.populate_tree(parent, curr_dir, os.listdir(curr_dir))
+
 if __name__ == '__main__':
     root = tkinter.Tk()
-    # root = tix.Tk()
     app = ServerApp(master=root)
     app.mainloop()
     try:
