@@ -2,7 +2,7 @@
 # serverGUI.py
 
 VERSION = "0.0 RELEASE"
-import os, tkinter, threading
+import os, tkinter, threading, sys
 from tkinter import ttk, constants, filedialog
 
 from pyftpdlib.authorizers import DummyAuthorizer
@@ -37,6 +37,8 @@ class ServerApp(tkinter.Frame):
         self.create_browse_button()
 
         self.create_dirTree_frame()
+        self.create_stdout_frame()
+        # self.create_stderr_frame()
 
         self.handler = FTPHandler
         self.handler.authorizer = self.authorizer
@@ -97,8 +99,7 @@ class ServerApp(tkinter.Frame):
         self.root_dir_input.grid(row=5, column=0)
 
     def create_browse_button(self):
-        self.browse_button = ttk.Button(self.dir_frame, text="Browse",
-            command=self.select_dir)
+        self.browse_button = ttk.Button(self.dir_frame, text="Browse", command=self.select_dir)
         self.browse_button.grid(row=5, column=4)
 
     def populate_tree(self, parent, fullpath, children):
@@ -155,6 +156,26 @@ class ServerApp(tkinter.Frame):
         self.populate_parent()
         self.root_dirTree.bind('<<TreeviewOpen>>', self.update_tree)
 
+    def create_stdout_frame(self):
+        self.stdout_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
+        self.stdout_frame.grid(row=12, column=0)
+
+        self.old_stdout = sys.stdout
+        self.text = tkinter.Text(self, width=40, height=10, wrap='none')
+        self.text.grid(row=13, column=0)
+        sys.stdout = StdoutRedirector(self.text)
+
+    # Enable this frame later
+    # def create_stderr_frame(self):
+    #     self.stderr_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
+    #     self.stderr_frame.grid(row=12, column=1)
+    #
+    #     self.old_stderr = sys.stderr
+    #
+    #     self.err = tkinter.Text(self, width=60, height=10, wrap='none')
+    #     self.err.grid(row=13, column=1)
+    #     sys.stderr = StdoutRedirector(self.err)
+
     def initialise(self):
         # Initial values
         self.username = tkinter.StringVar()
@@ -187,7 +208,7 @@ class ServerApp(tkinter.Frame):
         self.server.max_cons_per_ip = 5
 
         self.address = (self.listen_ip.get(), int(self.listen_port.get()))
-        print(self.address)
+        print("Connected to", self.address)
         self.start_button.state(['disabled'])
         self.stop_button.state(['!disabled'])
         self.current_state.set("RUNNING")
@@ -210,6 +231,14 @@ class ServerApp(tkinter.Frame):
         # Attach new root_dir
         self.populate_parent()
 
+class StdoutRedirector(object):
+    def __init__(self, text_widget):
+        self.text_space = text_widget
+
+    def write(self, string):
+        self.text_space.insert('end', string)
+        self.text_space.see('end')
+
 if __name__ == '__main__':
     root = tkinter.Tk()
     app = ServerApp(master=root)
@@ -218,3 +247,5 @@ if __name__ == '__main__':
         app.server.close_all()
     except:
         pass
+    sys.stdout = app.old_stdout
+    # sys.stderr = app.old_stderr
