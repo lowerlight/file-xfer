@@ -35,8 +35,11 @@ class ServerApp(tkinter.Frame):
 
         self.create_dir_frame()
         self.create_browse_button()
+        self.create_share_button()
 
-        self.create_dirTree_frame()
+        self.create_dirTree_frame(7, 0, "Local")
+        self.create_dirTree_frame(7, 4, "Remote")
+
         self.create_stdout_frame()
         # self.create_stderr_frame()
 
@@ -102,6 +105,10 @@ class ServerApp(tkinter.Frame):
         self.browse_button = ttk.Button(self.dir_frame, text="Browse", command=self.select_dir)
         self.browse_button.grid(row=5, column=4)
 
+    def create_share_button(self):
+        self.share_button = ttk.Button(self.dir_frame, text="Share", command=self.share_dir)
+        self.share_button.grid(row=5, column=5)
+
     def populate_tree(self, parent, fullpath, children):
         for child in children:
             child_path = os.path.join(fullpath, child).replace('\\', '/')
@@ -132,11 +139,10 @@ class ServerApp(tkinter.Frame):
                 tree_path = self.root_dirTree.set(node_id, 'fullpath')
                 self.populate_tree(node_id, tree_path, os.listdir(tree_path))
 
-    def create_dirTree_frame(self):
+    def create_dirTree_frame(self, rw, cl, tit):
         self.dirTree_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
-        self.dirTree_frame.grid(row=7, column=0, rowspan=4, columnspan=8)
-
-        ttk.Label(self.dirTree_frame, text="Local").grid(row=6, column=0)
+        self.dirTree_frame.grid(row=rw, column=cl, rowspan=4, columnspan=4)
+        ttk.Label(self.dirTree_frame, text=tit).grid(row=max(0,rw-1), column=0)
 
         self.root_dirTree = ttk.Treeview(columns=('fullpath','type','size'), displaycolumns='size')
         yScrollBar = ttk.Scrollbar(orient=constants.VERTICAL, command=self.root_dirTree.yview)
@@ -147,13 +153,13 @@ class ServerApp(tkinter.Frame):
         self.root_dirTree.heading('#0', text='Directory', anchor=constants.W)
         self.root_dirTree.heading('size', text='Size', anchor=constants.W)
 
-        self.root_dirTree.column('size', stretch=0, width=70)
+        self.root_dirTree.column('size', stretch=0, width=40)
 
-        self.root_dirTree.grid(row=8, column=0, sticky=constants.NSEW)
-        yScrollBar.grid(row=8, column=1, sticky=constants.NS)
-        xScrollBar.grid(row=9, column=0, sticky=constants.EW)
+        self.root_dirTree.grid(row=rw+1, column=cl, sticky=constants.NSEW)
+        yScrollBar.grid(row=rw+1, column=cl+1, sticky=constants.NS)
+        xScrollBar.grid(row=rw+2, column=cl, sticky=constants.EW)
 
-        self.populate_parent()
+        # self.populate_parent()
         self.root_dirTree.bind('<<TreeviewOpen>>', self.update_tree)
 
     def create_stdout_frame(self):
@@ -223,13 +229,23 @@ class ServerApp(tkinter.Frame):
         self.current_state.set("NOT RUNNING")
 
     def select_dir(self):
-        # Delete old root_dir
-        self.root_dirTree.delete(self.root_dirTree.get_children(''))
+        if self.root_dirTree.get_children(''):
+            # Delete old root_dir
+            self.root_dirTree.delete(self.root_dirTree.get_children(''))
 
         self.root_dir.set(filedialog.askdirectory().replace("/" , str(os.sep)))
 
+    def share_dir(self):
         # Attach new root_dir
         self.populate_parent()
+        # Open up the directory for transferring out/receiving in files
+        # For use with WindowsAuthorizer or UnixAuthorizer:
+        # For simplicity's sake, update the homedir everytime Share button is pressed
+        # self.authorizer.override_user(self.username.get(), homedir=self.root_dir.get())
+        # For now the workaround:
+        self.authorizer.remove_user(self.username.get())
+        self.authorizer.add_user(self.username.get(), self.password.get(), self.root_dir.get(),
+            'elradfmw')
 
 class StdoutRedirector(object):
     def __init__(self, text_widget):
