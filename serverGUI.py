@@ -3,13 +3,16 @@
 
 VERSION = "0.0 RELEASE"
 import os, tkinter, threading, sys
+from functools import partial
 from tkinter import ttk, constants, filedialog
-
+import pdb
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import ThreadedFTPServer
 
 class ServerApp(tkinter.Frame):
+    root_dir_tree = dict()
+    dir_tree_frame = dict()
     def __init__(self, master=None):
         tkinter.Frame.__init__(self, master)
         self.grid(row=0, column=0)
@@ -34,11 +37,14 @@ class ServerApp(tkinter.Frame):
         self.create_input_frame()
 
         self.create_dir_frame()
+        self.create_dir_tree_frame(7, 0, "Local")
+        self.create_push_files_button()
+
+        self.create_dir_tree_frame(7, 4, "Remote")
+        self.create_pull_files_button()
+
         self.create_browse_button()
         self.create_share_button()
-
-        self.create_dirTree_frame(7, 0, "Local")
-        self.create_dirTree_frame(7, 4, "Remote")
 
         self.create_stdout_frame()
         # self.create_stderr_frame()
@@ -98,69 +104,66 @@ class ServerApp(tkinter.Frame):
 
         ttk.Label(self.dir_frame, text="Shared Directory").grid(row=4, column=0)
 
+        # TODO: Rename this to Local root dir later.
+        # Now still cannot imagine how to get the remote root directory and display the tree
         self.root_dir_input = ttk.Entry(self.dir_frame, width=64, textvariable=self.root_dir)
         self.root_dir_input.grid(row=5, column=0)
 
     def create_browse_button(self):
-        self.browse_button = ttk.Button(self.dir_frame, text="Browse", command=self.select_dir)
+        self.browse_button = ttk.Button(self.dir_frame, text="Browse",
+            command=partial(self.select_dir, self.root_dir_tree['Local']))
         self.browse_button.grid(row=5, column=4)
 
     def create_share_button(self):
-        self.share_button = ttk.Button(self.dir_frame, text="Share", command=self.share_dir)
+        x = self.root_dir_tree['Local']
+        self.share_button = ttk.Button(self.dir_frame, text="Share",
+            command=partial(self.share_dir, self.root_dir_tree['Local']))
         self.share_button.grid(row=5, column=5)
 
-    def populate_tree(self, parent, fullpath, children):
-        for child in children:
-            child_path = os.path.join(fullpath, child).replace('\\', '/')
-            if os.path.isdir(child_path):
-                child_id = self.root_dirTree.insert(parent, constants.END, text=child,
-                    values=[child_path, 'directory'])
-                self.root_dirTree.insert(child_id, constants.END, text='dummy')
-            else:
-                filesize = os.stat(child_path).st_size
-                self.root_dirTree.insert(parent, constants.END, text=child,
-                    values=[child_path, 'directory', filesize])
+    def create_push_files_button(self):
+        self.push_files_button = ttk.Button(self.dir_tree_frame['Local'], text="Push >>",
+            command=self.push_files)
+        self.push_files_button.grid(row=0)
 
-    def populate_parent(self):
-        curr_dir = self.root_dir.get()
-        parent = self.root_dirTree.insert('', constants.END, text=curr_dir,
-            values=[curr_dir, 'directory'])
-        self.populate_tree(parent, curr_dir, os.listdir(curr_dir))
+    def create_pull_files_button(self):
+        self.pull_files_button = ttk.Button(self.dir_tree_frame['Remote'], text="Pull <<",
+            command=self.pull_files)
+        self.pull_files_button.grid(row=0)
 
-    def update_tree(self, event):
-        # event: unused variable
-        node_id = self.root_dirTree.focus()
-        if self.root_dirTree.parent(node_id):
-            # TODO: double click cause warning, but either need to bind it with another action
-            # or replace with a try catch block later
-            top_child = self.root_dirTree.get_children(node_id)[0]
-            if self.root_dirTree.item(top_child, option='text') == 'dummy':
-                self.root_dirTree.delete(top_child)
-                tree_path = self.root_dirTree.set(node_id, 'fullpath')
-                self.populate_tree(node_id, tree_path, os.listdir(tree_path))
+    def push_files(self):
+        files = self.root_dir_tree['Local'].selection()
+        for file in files:
+            print(file)
 
-    def create_dirTree_frame(self, rw, cl, tit):
-        self.dirTree_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
-        self.dirTree_frame.grid(row=rw, column=cl, rowspan=4, columnspan=4)
-        ttk.Label(self.dirTree_frame, text=tit).grid(row=max(0,rw-1), column=0)
+    def pull_files(self):
+        files = self.root_dir_tree['Remote'].selection()
+        for file in files:
+            print(file)
 
-        self.root_dirTree = ttk.Treeview(columns=('fullpath','type','size'), displaycolumns='size')
-        yScrollBar = ttk.Scrollbar(orient=constants.VERTICAL, command=self.root_dirTree.yview)
-        xScrollBar = ttk.Scrollbar(orient=constants.HORIZONTAL, command=self.root_dirTree.xview)
-        self.root_dirTree['yscroll'] = yScrollBar.set
-        self.root_dirTree['xscroll'] = xScrollBar.set
+    def create_dir_tree_frame(self, rw, cl, tit):
+        self.dir_tree_frame[tit] = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
+        self.dir_tree_frame[tit].grid(row=rw, column=cl, rowspan=4, columnspan=4)
+        ttk.Label(self.dir_tree_frame[tit], text=tit).grid(row=max(0,rw-1), column=0)
 
-        self.root_dirTree.heading('#0', text='Directory', anchor=constants.W)
-        self.root_dirTree.heading('size', text='Size', anchor=constants.W)
+        # TODO: do i need to Check tit is not None here?
+        # self.root_dir refers to Local root dir
+        # TODO: separate this out later. self.root_dir_tree is the content inside the frame
+        self.root_dir_tree[tit] = RootTree(self, root_directory=self.root_dir,
+            columns=('fullpath','type','size'), displaycolumns='size')
+        yScrollBar = ttk.Scrollbar(orient=constants.VERTICAL, command=self.root_dir_tree[tit].yview)
+        xScrollBar = ttk.Scrollbar(orient=constants.HORIZONTAL,
+            command=self.root_dir_tree[tit].xview)
+        self.root_dir_tree[tit]['yscroll'] = yScrollBar.set
+        self.root_dir_tree[tit]['xscroll'] = xScrollBar.set
 
-        self.root_dirTree.column('size', stretch=0, width=40)
+        self.root_dir_tree[tit].heading('#0', text='Directory', anchor=constants.W)
+        self.root_dir_tree[tit].heading('size', text='Size', anchor=constants.W)
 
-        self.root_dirTree.grid(row=rw+1, column=cl, sticky=constants.NSEW)
+        self.root_dir_tree[tit].column('size', stretch=0, width=40)
+
+        self.root_dir_tree[tit].grid(row=rw+1, column=cl, sticky=constants.NSEW)
         yScrollBar.grid(row=rw+1, column=cl+1, sticky=constants.NS)
         xScrollBar.grid(row=rw+2, column=cl, sticky=constants.EW)
-
-        # self.populate_parent()
-        self.root_dirTree.bind('<<TreeviewOpen>>', self.update_tree)
 
     def create_stdout_frame(self):
         self.stdout_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
@@ -228,24 +231,60 @@ class ServerApp(tkinter.Frame):
         self.stop_button.state(['disabled'])
         self.current_state.set("NOT RUNNING")
 
-    def select_dir(self):
-        if self.root_dirTree.get_children(''):
-            # Delete old root_dir
-            self.root_dirTree.delete(self.root_dirTree.get_children(''))
+    def select_dir(self, dir_tree_view):
+        if isinstance(dir_tree_view, ttk.Treeview):
+            children = dir_tree_view.get_children('')
+            if children:
+                dir_tree_view.delete(children)
+            dir_tree_view.root_directory.set(filedialog.askdirectory().replace("/" , str(os.sep)))
 
-        self.root_dir.set(filedialog.askdirectory().replace("/" , str(os.sep)))
+    def share_dir(self, dir_tree_view):
+        if isinstance(dir_tree_view, ttk.Treeview):
+            dir_tree_view.populate_parent()
+            # Open up the directory for transferring out/receiving in files
+            # For use with WindowsAuthorizer or UnixAuthorizer:
+            # For simplicity's sake, update the homedir everytime Share button is pressed
+            # self.authorizer.override_user(self.username.get(), homedir=self.root_dir.get())
+            # For now the workaround:
+            self.authorizer.remove_user(self.username.get())
+            self.authorizer.add_user(self.username.get(), self.password.get(), self.root_dir.get(),
+                'elradfmw')
 
-    def share_dir(self):
-        # Attach new root_dir
-        self.populate_parent()
-        # Open up the directory for transferring out/receiving in files
-        # For use with WindowsAuthorizer or UnixAuthorizer:
-        # For simplicity's sake, update the homedir everytime Share button is pressed
-        # self.authorizer.override_user(self.username.get(), homedir=self.root_dir.get())
-        # For now the workaround:
-        self.authorizer.remove_user(self.username.get())
-        self.authorizer.add_user(self.username.get(), self.password.get(), self.root_dir.get(),
-            'elradfmw')
+class RootTree(ttk.Treeview):
+    def __init__(self, *args, **kwargs):
+        self.root_directory = kwargs.pop('root_directory')
+        super(RootTree, self).__init__(*args, **kwargs)
+        self.bind('<<TreeviewOpen>>', self.update_tree)
+
+    def populate_tree(self, parent, fullpath, children):
+        for child in children:
+            child_path = os.path.join(fullpath, child).replace('\\', '/')
+            if os.path.isdir(child_path):
+                child_id = self.insert(parent, constants.END, text=child,
+                    values=[child_path, 'directory'])
+                self.insert(child_id, constants.END, text='dummy')
+            else:
+                filesize = os.stat(child_path).st_size
+                self.insert(parent, constants.END, text=child,
+                    values=[child_path, 'directory', filesize])
+
+    def populate_parent(self):
+        if self.root_directory:
+            curr_dir = self.root_directory.get()
+            parent = self.insert('', constants.END, text=curr_dir, values=[curr_dir, 'directory'])
+            self.populate_tree(parent, curr_dir, os.listdir(curr_dir))
+
+    def update_tree(self, event):
+        # event: unused variable
+        node_id = self.focus()
+        if self.parent(node_id):
+            # TODO: double click cause warning, but either need to bind it with another action
+            # or replace with a try catch block later
+            top_child = self.get_children(node_id)[0]
+            if self.item(top_child, option='text') == 'dummy':
+                self.delete(top_child)
+                tree_path = self.set(node_id, 'fullpath')
+                self.populate_tree(node_id, tree_path, os.listdir(tree_path))
 
 class StdoutRedirector(object):
     def __init__(self, text_widget):
