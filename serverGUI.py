@@ -2,17 +2,23 @@
 # serverGUI.py
 
 VERSION = "0.0 RELEASE"
-import os, tkinter, threading, sys
+import os, tkinter, threading, sys, re
 from functools import partial
 from tkinter import ttk, constants, filedialog
 import pdb
+
+import ftplib
+
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import ThreadedFTPServer
 
-class ServerApp(tkinter.Frame):
+class FTPServerClientApp(tkinter.Frame):
+    root_dir = dict()
     root_dir_tree = dict()
     dir_tree_frame = dict()
+    ftp_conn = ftplib.FTP()
+
     def __init__(self, master=None):
         tkinter.Frame.__init__(self, master)
         self.grid(row=0, column=0)
@@ -23,7 +29,7 @@ class ServerApp(tkinter.Frame):
 
         # Main Frame
         # master.geometry("480x120")
-        master.minsize(960,480)
+        master.minsize(960,640)
         master.title("FTP Server")
 
         # Grid Position (row, column)
@@ -36,12 +42,15 @@ class ServerApp(tkinter.Frame):
         self.create_state_frame()
         self.create_input_frame()
 
+        self.create_remote_dir_button()
+        self.create_connect_button()
+
         self.create_dir_frame()
         self.create_dir_tree_frame(7, 0, "Local")
-        self.create_push_files_button()
+        self.create_push_file_button()
 
         self.create_dir_tree_frame(7, 4, "Remote")
-        self.create_pull_files_button()
+        self.create_pull_file_button()
 
         self.create_browse_button()
         self.create_share_button()
@@ -106,7 +115,8 @@ class ServerApp(tkinter.Frame):
 
         # TODO: Rename this to Local root dir later.
         # Now still cannot imagine how to get the remote root directory and display the tree
-        self.root_dir_input = ttk.Entry(self.dir_frame, width=64, textvariable=self.root_dir)
+        self.root_dir_input = ttk.Entry(self.dir_frame, width=64,
+            textvariable=self.root_dir['Local'])
         self.root_dir_input.grid(row=5, column=0)
 
     def create_browse_button(self):
@@ -115,30 +125,76 @@ class ServerApp(tkinter.Frame):
         self.browse_button.grid(row=5, column=4)
 
     def create_share_button(self):
-        x = self.root_dir_tree['Local']
         self.share_button = ttk.Button(self.dir_frame, text="Share",
             command=partial(self.share_dir, self.root_dir_tree['Local']))
         self.share_button.grid(row=5, column=5)
 
-    def create_push_files_button(self):
-        self.push_files_button = ttk.Button(self.dir_tree_frame['Local'], text="Push >>",
-            command=self.push_files)
-        self.push_files_button.grid(row=0)
+    def create_push_file_button(self):
+        self.push_file_button = ttk.Button(self.dir_tree_frame['Local'], text="Push >>",
+            command=self.push_file)
+        self.push_file_button.grid(row=0)
 
-    def create_pull_files_button(self):
-        self.pull_files_button = ttk.Button(self.dir_tree_frame['Remote'], text="Pull <<",
-            command=self.pull_files)
-        self.pull_files_button.grid(row=0)
+    def create_pull_file_button(self):
+        self.pull_file_button = ttk.Button(self.dir_tree_frame['Remote'], text="Pull <<",
+            command=self.pull_file)
+        self.pull_file_button.grid(row=0)
 
-    def push_files(self):
+    def connect(self):
+        user = self.username.get()
+        pswd = self.password.get()
+        try:
+            self.ftp_conn = ftplib.FTP(user=user, passwd=pswd)
+            self.ftp_conn.connect(host=self.listen_ip.get(), port=int(self.listen_port.get()))
+            self.ftp_conn.login(user, pswd)
+        except:
+            print("Login failed, check username, password, IP and port.")
+            return
+
+        self.root_dir_tree['Remote'].root_directory.set(str(os.sep))
+
+    def create_remote_dir_button(self):
+        self.remote_dir_button = ttk.Button(self, text="Remote Dir",
+            command=self.list_remote_dir)
+        self.remote_dir_button.grid(row=0, column=2)
+
+    def create_connect_button(self):
+        self.connect_button = ttk.Button(self, text="Connect", command=self.connect)
+        self.connect_button.grid(row=0, column=3)
+
+    def upload_file(filename, outfile=None):
+        if not outfile:
+            outfile = sys.stdout
+        if re.search('\.txt$', filename):
+            self.ftp_conn.storlines("STOR " + filename, open(filename))
+        else:
+            self.ftp_conn.storbinary("STOR " + filename, open(filename, "rb"), 1024)
+
+    def get_file(filename, outfile=None):
+        if not outfile:
+            outfile = sys.stdout
+        if re.search('\.txt$', filename):
+            self.ftp_conn.retrlines("RETR " + filename, lambda s, w=outfile.write: w(s+"\r\n"))
+        else:
+            self.ftp_conn.retrbinary("RETR " + filename, outfile.write)
+
+    def list_remote_dir(self):
+        dat = []   # TODO: What if there are more than 2 instances running on the same comp?
+        self.ftp_conn.dir(dat.append)
+        self.root_dir_tree['Remote'].populate_parent()
+        for fil in dat:
+            print(fil)
+
+    def push_file(self):
         files = self.root_dir_tree['Local'].selection()
-        for file in files:
-            print(file)
+        for fil in files:
+            print(fil)
+            # self.upload_file(conn, file)
 
-    def pull_files(self):
+    def pull_file(self):
         files = self.root_dir_tree['Remote'].selection()
-        for file in files:
-            print(file)
+        for fil in files:
+            print(fil)
+            # self.getfile(conn, file)
 
     def create_dir_tree_frame(self, rw, cl, tit):
         self.dir_tree_frame[tit] = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
@@ -146,10 +202,9 @@ class ServerApp(tkinter.Frame):
         ttk.Label(self.dir_tree_frame[tit], text=tit).grid(row=max(0,rw-1), column=0)
 
         # TODO: do i need to Check tit is not None here?
-        # self.root_dir refers to Local root dir
-        # TODO: separate this out later. self.root_dir_tree is the content inside the frame
-        self.root_dir_tree[tit] = RootTree(self, root_directory=self.root_dir,
-            columns=('fullpath','type','size'), displaycolumns='size')
+        self.root_dir_tree[tit] = RootTree(self, columns=('fullpath','type','size'),
+            displaycolumns='size', root_dir=self.root_dir[tit],
+            conn=self.ftp_conn if tit=='Remote' else None)
         yScrollBar = ttk.Scrollbar(orient=constants.VERTICAL, command=self.root_dir_tree[tit].yview)
         xScrollBar = ttk.Scrollbar(orient=constants.HORIZONTAL,
             command=self.root_dir_tree[tit].xview)
@@ -158,7 +213,6 @@ class ServerApp(tkinter.Frame):
 
         self.root_dir_tree[tit].heading('#0', text='Directory', anchor=constants.W)
         self.root_dir_tree[tit].heading('size', text='Size', anchor=constants.W)
-
         self.root_dir_tree[tit].column('size', stretch=0, width=40)
 
         self.root_dir_tree[tit].grid(row=rw+1, column=cl, sticky=constants.NSEW)
@@ -193,8 +247,8 @@ class ServerApp(tkinter.Frame):
         self.password = tkinter.StringVar()
         self.password.set("passwd")
 
-        self.root_dir = tkinter.StringVar()
-        self.root_dir.set(os.getcwd() + os.sep)
+        self.root_dir['Local'] = tkinter.StringVar()
+        self.root_dir['Local'].set(os.getcwd() + os.sep)
 
         self.current_state = tkinter.StringVar()
         self.current_state.set("not running")
@@ -205,9 +259,12 @@ class ServerApp(tkinter.Frame):
         self.listen_port = tkinter.StringVar()
         self.listen_port.set("21")
 
+        self.root_dir['Remote'] = tkinter.StringVar()
+        self.root_dir['Remote'].set(os.sep)
+
         # This can be set up only once and saved in a database
-        self.authorizer.add_user(self.username.get(), self.password.get(), self.root_dir.get(),
-            'elradfmw')
+        self.authorizer.add_user(self.username.get(), self.password.get(),
+            self.root_dir['Local'].get(), 'elradfmw')
 
     def start_server(self):
         self.address = ("127.0.0.1", int(21))
@@ -223,6 +280,7 @@ class ServerApp(tkinter.Frame):
         self.current_state.set("RUNNING")
         # self.server.serve_forever() # WARNING: Must find a way to prevent this from blocking!
         threading.Thread(target=self.server.serve_forever).start()
+        print(self.username.get(), self.password.get())
 
     def stop_server(self):
         self.server.close_all()
@@ -232,29 +290,47 @@ class ServerApp(tkinter.Frame):
         self.current_state.set("NOT RUNNING")
 
     def select_dir(self, dir_tree_view):
-        if isinstance(dir_tree_view, ttk.Treeview):
+        if isinstance(dir_tree_view, RootTree):
             children = dir_tree_view.get_children('')
             if children:
                 dir_tree_view.delete(children)
             dir_tree_view.root_directory.set(filedialog.askdirectory().replace("/" , str(os.sep)))
 
     def share_dir(self, dir_tree_view):
-        if isinstance(dir_tree_view, ttk.Treeview):
+        if isinstance(dir_tree_view, RootTree):
             dir_tree_view.populate_parent()
             # Open up the directory for transferring out/receiving in files
             # For use with WindowsAuthorizer or UnixAuthorizer:
             # For simplicity's sake, update the homedir everytime Share button is pressed
-            # self.authorizer.override_user(self.username.get(), homedir=self.root_dir.get())
+            # self.authorizer.override_user(self.username.get(),
+            # homedir=self.root_dir['Local'].get())
             # For now the workaround:
             self.authorizer.remove_user(self.username.get())
-            self.authorizer.add_user(self.username.get(), self.password.get(), self.root_dir.get(),
-                'elradfmw')
+            self.authorizer.add_user(self.username.get(), self.password.get(),
+                self.root_dir['Local'].get(), 'elradfmw')
 
 class RootTree(ttk.Treeview):
-    def __init__(self, *args, **kwargs):
-        self.root_directory = kwargs.pop('root_directory')
+    ftp_conn = None
+    def __init__(self, *args, root_dir, conn, **kwargs):
         super(RootTree, self).__init__(*args, **kwargs)
+        assert isinstance(root_dir, tkinter.StringVar)
+        self.root_directory = root_dir
+        if conn:
+            assert isinstance(conn, ftplib.FTP)
+            self.ftp_conn = conn
         self.bind('<<TreeviewOpen>>', self.update_tree)
+
+    def list_dir(self, dir_path):
+        if self.ftp_conn:
+            return self.ftp_conn.nlst(dir_path)
+        else:
+            return os.listdir(dir_path)
+
+    def get_file_size(self, filename):
+        if self.ftp_conn:
+            return self.ftp_conn.size(filename)
+        else:
+            return os.stat(filename).st_size
 
     def populate_tree(self, parent, fullpath, children):
         for child in children:
@@ -264,15 +340,19 @@ class RootTree(ttk.Treeview):
                     values=[child_path, 'directory'])
                 self.insert(child_id, constants.END, text='dummy')
             else:
-                filesize = os.stat(child_path).st_size
+                filesize = self.get_file_size(child_path)
                 self.insert(parent, constants.END, text=child,
                     values=[child_path, 'directory', filesize])
 
     def populate_parent(self):
         if self.root_directory:
             curr_dir = self.root_directory.get()
+            print(curr_dir)
+            if self.ftp_conn:
+                os.path.split(curr_dir)
+
             parent = self.insert('', constants.END, text=curr_dir, values=[curr_dir, 'directory'])
-            self.populate_tree(parent, curr_dir, os.listdir(curr_dir))
+            self.populate_tree(parent, curr_dir, self.list_dir(curr_dir))
 
     def update_tree(self, event):
         # event: unused variable
@@ -284,7 +364,7 @@ class RootTree(ttk.Treeview):
             if self.item(top_child, option='text') == 'dummy':
                 self.delete(top_child)
                 tree_path = self.set(node_id, 'fullpath')
-                self.populate_tree(node_id, tree_path, os.listdir(tree_path))
+                self.populate_tree(node_id, tree_path, self.list_dir(tree_path))
 
 class StdoutRedirector(object):
     def __init__(self, text_widget):
@@ -296,11 +376,12 @@ class StdoutRedirector(object):
 
 if __name__ == '__main__':
     root = tkinter.Tk()
-    app = ServerApp(master=root)
+    app = FTPServerClientApp(master=root)
     app.mainloop()
     try:
         app.server.close_all()
     except:
         pass
+
     sys.stdout = app.old_stdout
     # sys.stderr = app.old_stderr
