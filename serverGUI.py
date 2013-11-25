@@ -55,7 +55,7 @@ class FTPServerClientApp(tkinter.Frame):
         self.create_browse_button()
         self.create_share_button()
 
-        self.create_stdout_frame()
+        # self.create_stdout_frame()
         # self.create_stderr_frame()
 
         self.handler = FTPHandler
@@ -142,15 +142,23 @@ class FTPServerClientApp(tkinter.Frame):
     def connect(self):
         user = self.username.get()
         pswd = self.password.get()
+        host = self.listen_ip.get()
+        port = int(self.listen_port.get())
+
         try:
             self.ftp_conn = ftplib.FTP(user=user, passwd=pswd)
-            self.ftp_conn.connect(host=self.listen_ip.get(), port=int(self.listen_port.get()))
+            print("h1")
+            self.ftp_conn.connect(host=host, port=port)
+            print((host, port))
+            print("h2")
             self.ftp_conn.login(user, pswd)
+            print("h3")
         except:
             print("Login failed, check username, password, IP and port.")
             return
 
         self.root_dir_tree['Remote'].root_directory.set(str(os.sep))
+        self.list_remote_dir()
 
     def create_remote_dir_button(self):
         self.remote_dir_button = ttk.Button(self, text="Remote Dir",
@@ -178,11 +186,20 @@ class FTPServerClientApp(tkinter.Frame):
             self.ftp_conn.retrbinary("RETR " + filename, outfile.write)
 
     def list_remote_dir(self):
-        dat = []   # TODO: What if there are more than 2 instances running on the same comp?
-        self.ftp_conn.dir(dat.append)
+        user = self.username.get()
+        pswd = self.password.get()
+        host = self.listen_ip.get()
+        port = int(self.listen_port.get())
+
+        assert isinstance(self.root_dir_tree['Remote'], RootTree)
+        print(self.root_dir_tree['Remote'].ftp_conn.sock)   # TO ANSWER: why the sock go missing?!
+        if not self.root_dir_tree['Remote'].ftp_conn.sock:
+            self.root_dir_tree['Remote'].ftp_conn.connect(host=host, port=port)
+            print("Reconnected!")
+            self.root_dir_tree['Remote'].ftp_conn.login(user, pswd)
+            print("Reloggedin!")
+
         self.root_dir_tree['Remote'].populate_parent()
-        for fil in dat:
-            print(fil)
 
     def push_file(self):
         files = self.root_dir_tree['Local'].selection()
@@ -201,10 +218,10 @@ class FTPServerClientApp(tkinter.Frame):
         self.dir_tree_frame[tit].grid(row=rw, column=cl, rowspan=4, columnspan=4)
         ttk.Label(self.dir_tree_frame[tit], text=tit).grid(row=max(0,rw-1), column=0)
 
-        # TODO: do i need to Check tit is not None here?
         self.root_dir_tree[tit] = RootTree(self, columns=('fullpath','type','size'),
             displaycolumns='size', root_dir=self.root_dir[tit],
             conn=self.ftp_conn if tit=='Remote' else None)
+        print(tit, self.root_dir_tree[tit])
         yScrollBar = ttk.Scrollbar(orient=constants.VERTICAL, command=self.root_dir_tree[tit].yview)
         xScrollBar = ttk.Scrollbar(orient=constants.HORIZONTAL,
             command=self.root_dir_tree[tit].xview)
@@ -219,14 +236,15 @@ class FTPServerClientApp(tkinter.Frame):
         yScrollBar.grid(row=rw+1, column=cl+1, sticky=constants.NS)
         xScrollBar.grid(row=rw+2, column=cl, sticky=constants.EW)
 
-    def create_stdout_frame(self):
-        self.stdout_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
-        self.stdout_frame.grid(row=12, column=0)
-
-        self.old_stdout = sys.stdout
-        self.text = tkinter.Text(self, width=40, height=10, wrap='none')
-        self.text.grid(row=13, column=0)
-        sys.stdout = StdoutRedirector(self.text)
+    # Enable this frame later
+    # def create_stdout_frame(self):
+    #     self.stdout_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
+    #     self.stdout_frame.grid(row=12, column=0)
+    #
+    #     self.old_stdout = sys.stdout
+    #     self.text = tkinter.Text(self, width=40, height=10, wrap='none')
+    #     self.text.grid(row=13, column=0)
+    #     sys.stdout = StdoutRedirector(self.text)
 
     # Enable this frame later
     # def create_stderr_frame(self):
@@ -311,30 +329,42 @@ class FTPServerClientApp(tkinter.Frame):
 
 class RootTree(ttk.Treeview):
     ftp_conn = None
+    ftp_item_dict = dict()
     def __init__(self, *args, root_dir, conn, **kwargs):
         super(RootTree, self).__init__(*args, **kwargs)
         assert isinstance(root_dir, tkinter.StringVar)
         self.root_directory = root_dir
         if conn:
             assert isinstance(conn, ftplib.FTP)
+            print("Assigning connection")
             self.ftp_conn = conn
         self.bind('<<TreeviewOpen>>', self.update_tree)
 
     def list_dir(self, dir_path):
         if self.ftp_conn:
-            return self.ftp_conn.nlst(dir_path)
+            # Just let the server determine the current path, don't pump in any path
+            ftp_returned_gen = self.ftp_conn.mlsd(facts=['size'])
+            for i in ftp_returned_gen:
+                print(i)    # will return (filename, {attr1: xxx, attr2: yyy, ...})
+                self.ftp_item_dict[i[0]] = i[1]['size']
+            return self.ftp_item_dict.keys()
         else:
             return os.listdir(dir_path)
 
     def get_file_size(self, filename):
         if self.ftp_conn:
-            return self.ftp_conn.size(filename)
+            filename.lstrip(os.sep)
+            return self.ftp_item_dict[filename]
         else:
             return os.stat(filename).st_size
 
     def populate_tree(self, parent, fullpath, children):
         for child in children:
-            child_path = os.path.join(fullpath, child).replace('\\', '/')
+            if self.ftp_conn:
+                child_path = child
+            else:
+                child_path = os.path.join(fullpath, child).replace('\\', '/')
+
             if os.path.isdir(child_path):
                 child_id = self.insert(parent, constants.END, text=child,
                     values=[child_path, 'directory'])
@@ -346,11 +376,14 @@ class RootTree(ttk.Treeview):
 
     def populate_parent(self):
         if self.root_directory:
+            # Need to delete previous parent if exists
+            children = self.get_children('')
+            if children:
+                self.delete(children)
+                self.ftp_item_dict.clear()
+
             curr_dir = self.root_directory.get()
             print(curr_dir)
-            if self.ftp_conn:
-                os.path.split(curr_dir)
-
             parent = self.insert('', constants.END, text=curr_dir, values=[curr_dir, 'directory'])
             self.populate_tree(parent, curr_dir, self.list_dir(curr_dir))
 
@@ -383,5 +416,5 @@ if __name__ == '__main__':
     except:
         pass
 
-    sys.stdout = app.old_stdout
+    # sys.stdout = app.old_stdout
     # sys.stderr = app.old_stderr
