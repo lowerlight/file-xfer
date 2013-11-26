@@ -47,10 +47,10 @@ class FTPServerClientApp(tkinter.Frame):
 
         self.create_dir_frame(rw=4, cl=0)
         self.create_dir_tree_frame(rw=7, cl=0, tit="Local")
-        # self.create_push_file_button(rw=7, cl=2)
+        self.create_push_file_button(rw=7, cl=1)
 
         self.create_dir_tree_frame(rw=7, cl=4, tit="Remote")
-        # self.create_pull_file_button(rw=7, cl=3)
+        self.create_pull_file_button(rw=7, cl=2)
 
         self.create_browse_button(rw=5, cl=4)
         self.create_share_button(rw=5, cl=5)
@@ -185,9 +185,10 @@ class FTPServerClientApp(tkinter.Frame):
         self.connect_button = ttk.Button(self, text="Disconnect", command=self.disconnect)
         self.connect_button.grid(row=rw, column=cl)
 
-    def upload_file(filename, outfile=None):
+    def upload_file(self, filename, outfile=None):
         if not outfile:
             outfile = sys.stdout
+        self.reconnect()
         if re.search('\.txt$', filename):
             self.ftp_conn.storlines("STOR " + filename, open(filename),
                 callback=lambda : print('.'))
@@ -195,41 +196,54 @@ class FTPServerClientApp(tkinter.Frame):
             self.ftp_conn.storbinary("STOR " + filename, open(filename, "rb"), 1024,
                 lambda : print('.'))
 
-    def download_file(filename, outfile=None):
+    def download_file(self, filename, outfile=None):
         if not outfile:
             outfile = sys.stdout
+        else:
+            # TODO: Check if file already exists and append number?/alert user?
+            pass
+
+        print(filename)
+        self.reconnect()
         if re.search('\.txt$', filename):
+            outfile = open(filename, 'w')
             self.ftp_conn.retrlines("RETR " + filename, lambda s, w=outfile.write: w(s+"\r\n"))
         else:
+            outfile = open(filename, 'wb')
             self.ftp_conn.retrbinary("RETR " + filename, outfile.write)
+        outfile.close()
 
     def list_remote_dir(self):
-        user = self.username.get()
-        pswd = self.password.get()
-        host = self.listen_ip.get()
-        port = int(self.listen_port.get())
-
         assert isinstance(self.root_dir_tree['Remote'], RootTree)
+        self.reconnect()
+        self.root_dir_tree['Remote'].populate_parent()
+
+    def reconnect(self):
+        self.user = self.username.get()
+        self.pswd = self.password.get()
+        self.host = self.listen_ip.get()
+        self.port = int(self.listen_port.get())
+
         print(self.root_dir_tree['Remote'].ftp_conn.sock)   # TO ANSWER: why the sock go missing?!
         if not self.root_dir_tree['Remote'].ftp_conn.sock:
-            self.root_dir_tree['Remote'].ftp_conn.connect(host=host, port=port)
+            self.root_dir_tree['Remote'].ftp_conn.connect(host=self.host, port=self.port)
             print("Reconnected!")
-            self.root_dir_tree['Remote'].ftp_conn.login(user, pswd)
+            self.root_dir_tree['Remote'].ftp_conn.login(self.user, self.pswd)
             print("Reloggedin!")
-
-        self.root_dir_tree['Remote'].populate_parent()
 
     def push_file(self):
         files = self.root_dir_tree['Local'].selection()
-        for filename in files:
-            print(fil)
+        for fileinfo in files:
+            print(self.root_dir_tree['Local'].item(fileinfo))
+            filename = self.root_dir_tree['Local'].item(fileinfo, 'text')
             self.upload_file(filename)
 
     def pull_file(self):
         files = self.root_dir_tree['Remote'].selection()
-        for filename in files:
-            print(filename)
-            self.download_file(filename, "out_{0}".format(filename))
+        for fileinfo in files:
+            print(self.root_dir_tree['Remote'].item(fileinfo))
+            filename = self.root_dir_tree['Remote'].item(fileinfo, 'text')
+            self.download_file(filename, outfile="out_{0}".format(filename))
 
     def create_dir_tree_frame(self, rw, cl, tit):
         self.dir_tree_frame[tit] = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
@@ -339,6 +353,7 @@ class FTPServerClientApp(tkinter.Frame):
 
     def share_dir(self, dir_tree_view):
         if isinstance(dir_tree_view, RootTree):
+            # No need to reconnect because this is only for local dir
             dir_tree_view.populate_parent()
             # Open up the directory for transferring out/receiving in files
             # For use with WindowsAuthorizer or UnixAuthorizer:
@@ -368,7 +383,6 @@ class RootTree(ttk.Treeview):
             # Just let the server determine the current path, don't pump in any path
             ftp_returned_gen = self.ftp_conn.mlsd(facts=['size'])
             for i in ftp_returned_gen:
-                print(i)    # will return (filename, {attr1: xxx, attr2: yyy, ...})
                 self.ftp_item_dict[i[0]] = i[1]['size']
             return self.ftp_item_dict.keys()
         else:
