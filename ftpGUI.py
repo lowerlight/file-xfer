@@ -71,8 +71,8 @@ class RootTree(ttk.Treeview):
             children = self.get_children('')
             if children:
                 self.delete(children)
-                self.ftp_item_dict.clear()
 
+            self.ftp_item_dict.clear()
             curr_dir = self.root_directory.get()
             print(curr_dir)
             parent = self.insert('', constants.END, text=curr_dir, values=[curr_dir, 'directory'])

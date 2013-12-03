@@ -40,29 +40,30 @@ class FTPClientApp(tkinter.Frame):
 
         # Main Frame
         # master.geometry("480x120")
-        master.minsize(960,480)
-        # self.local_ip_addr = gethostbyname(getfqdn())
-        self.local_ip_addr = '127.0.0.1'    # debug
+        master.minsize(840,480)
+        self.local_ip_addr = gethostbyname(getfqdn())
+        # self.local_ip_addr = '127.0.0.1'    # debug
         master.title("FTP Server at %s" % self.local_ip_addr)
 
         self.create_control_frame(rw=0, cl=0)
 
         self.create_state_frame(rw=1, cl=0)
-        self.create_input_frame(rw=3, cl=0)
+        self.create_input_frame(rw=3, cl=3)
 
         self.create_remote_dir_button(rw=1, cl=3)
 
-        self.create_dir_frame(rw=4, cl=0)
+        self.create_dir_frame(rw=3, cl=0)
         self.create_dir_tree_frame(rw=7, cl=0, tit="Local")
         self.create_push_file_button(rw=7, cl=1)
 
-        self.create_dir_tree_frame(rw=7, cl=4, tit="Remote")
+        self.create_dir_tree_frame(rw=7, cl=3, tit="Remote")
         self.create_pull_file_button(rw=7, cl=2)
 
         self.create_connect_button(rw=0, cl=1)
         self.create_disconnect_button(rw=0, cl=2)
-        self.create_browse_button(rw=5, cl=4)
-        self.create_share_button(rw=5, cl=5)
+
+        self.create_browse_button(rw=4, cl=3)
+        self.create_share_button(rw=4, cl=4)
 
     def initialise(self):
         # Initial values
@@ -145,7 +146,7 @@ class FTPClientApp(tkinter.Frame):
 
     def create_dir_frame(self, rw, cl):
         self.dir_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
-        self.dir_frame.grid(row=rw, column=cl, columnspan=3, sticky=constants.W, pady=4, padx=5)
+        self.dir_frame.grid(row=rw, column=cl, columnspan=2, sticky=constants.W, pady=4, padx=5)
         ttk.Label(self.dir_frame, text="Local Directory").grid(row=rw, column=cl,
             sticky=constants.W)
 
@@ -229,14 +230,21 @@ class FTPClientApp(tkinter.Frame):
             print("Reloggedin!")
 
     def create_remote_dir_button(self, rw, cl):
-        self.remote_dir_button = ttk.Button(self, text="Remote Dir",
+        self.remote_dir_button = ttk.Button(self, text="Refresh Remote",
             command=self.list_remote_dir)
-        self.remote_dir_button.grid(row=rw, column=cl)
+        self.remote_dir_button.grid(row=rw, column=cl, sticky=constants.W, pady=4, padx=5)
 
     def share_dir(self, dir_tree_view):
         if isinstance(dir_tree_view, RootTree):
             # No need to reconnect because this is only for local dir
             dir_tree_view.populate_parent()
+
+    def select_dir(self, dir_tree_view):
+        if isinstance(dir_tree_view, RootTree):
+            children = dir_tree_view.get_children('')
+            if children:
+                dir_tree_view.delete(children)
+            dir_tree_view.root_directory.set(filedialog.askdirectory().replace("/" , str(os.sep)))
 
     def upload_file(self, filename, outfile=None):
         if not outfile:
@@ -329,12 +337,6 @@ class FTPClientApp(tkinter.Frame):
     #     self.err.grid(row=rw+1, column=cl+1)
     #     sys.stderr = StdoutRedirector(self.err)
 
-    def select_dir(self, dir_tree_view):
-        if isinstance(dir_tree_view, RootTree):
-            children = dir_tree_view.get_children('')
-            if children:
-                dir_tree_view.delete(children)
-            dir_tree_view.root_directory.set(filedialog.askdirectory().replace("/" , str(os.sep)))
 
 if __name__ == '__main__':
     root = tkinter.Tk()
