@@ -22,8 +22,6 @@ from functools import partial
 from tkinter import ttk, constants, filedialog
 import pdb
 
-# import ftplib
-
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import ThreadedFTPServer
@@ -34,37 +32,28 @@ class FTPServerApp(tkinter.Frame):
     root_dir = dict()
     root_dir_tree = dict()
     dir_tree_frame = dict()
-    # ftp_conn = ftplib.FTP()
 
     def __init__(self, master=None):
         tkinter.Frame.__init__(self, master)
         self.grid(row=0, column=0)
+        # Main Frame
+        # master.geometry("480x120")
+        master.minsize(480,640)
+        self.local_ip_addr = gethostbyname(getfqdn())
+        # self.local_ip_addr = '127.0.0.1' # debug
+        self.local_port = int(2169)
+        master.title("FTP Server at %s listening at port %s " % (self.local_ip_addr, self.local_port))
 
         # May need to move this out
         self.authorizer = DummyAuthorizer()
         self.initialise()
 
-        # Main Frame
-        # master.geometry("480x120")
-        master.minsize(480,640)
-        # self.local_ip_addr = gethostbyname(getfqdn())
-        self.local_ip_addr = '127.0.0.1' # debug
-        master.title("FTP Server at %s" % self.local_ip_addr)
-
-        # Grid Position (row, column)
-        # self.grid_pstn={(row:, column: }
-
         self.create_server_control_frame(rw=0, cl=0)
 
         self.create_state_frame(rw=1, cl=0)
-        # self.create_input_frame(rw=3, cl=0)
 
         self.create_dir_frame(rw=4, cl=0)
         self.create_dir_tree_frame(rw=7, cl=0, tit="Local")
-        # self.create_push_file_button(rw=7, cl=1)
-
-        # self.create_dir_tree_frame(rw=7, cl=4, tit="Remote")
-        # self.create_pull_file_button(rw=7, cl=2)
 
         self.create_browse_button(rw=5, cl=4)
         self.create_share_button(rw=5, cl=5)
@@ -106,8 +95,6 @@ class FTPServerApp(tkinter.Frame):
         ttk.Label(self.dir_frame, text="Shared Directory").grid(row=rw, column=cl,
             sticky=constants.W)
 
-        # TODO: Rename this to Local root dir later.
-        # Now still cannot imagine how to get the remote root directory and display the tree
         self.root_dir_input = ttk.Entry(self.dir_frame, width=64,
             textvariable=self.root_dir['Local'])
         self.root_dir_input.grid(row=rw+1, column=cl)
@@ -193,17 +180,17 @@ class FTPServerApp(tkinter.Frame):
         self.password = tkinter.StringVar()
         self.password.set("passwd")
 
+        self.listen_ip = tkinter.StringVar()
+        self.listen_ip.set(self.local_ip_addr)
+
+        self.listen_port = tkinter.StringVar()
+        self.listen_port.set(self.local_port)
+
         self.root_dir['Local'] = tkinter.StringVar()
         self.root_dir['Local'].set(os.getcwd() + os.sep)
 
         self.current_state = tkinter.StringVar()
         self.current_state.set("NOT RUNNING")
-
-        self.listen_ip = tkinter.StringVar()
-        self.listen_ip.set("127.0.0.1")
-
-        self.listen_port = tkinter.StringVar()
-        self.listen_port.set("21")
 
         self.root_dir['Remote'] = tkinter.StringVar()
         self.root_dir['Remote'].set(os.sep)
@@ -213,15 +200,11 @@ class FTPServerApp(tkinter.Frame):
             self.root_dir['Local'].get(), 'elradfmw')
 
     def start_server(self):
-        self.address = ("127.0.0.1", int(21))
-        # self.address = (gethostbyname(getfqdn()), int(21690))
-
+        self.address = (self.listen_ip.get(), int(self.listen_port.get()))
         self.server = ThreadedFTPServer(self.address, self.handler)
         self.server.max_cons = 256
         self.server.max_cons_per_ip = 5
 
-        # self.address = (self.listen_ip.get(), int(self.listen_port.get()))
-        # print("Server at %s started" % self.address)
         self.start_button.state(['disabled'])
         self.stop_button.state(['!disabled'])
         self.current_state.set("RUNNING")
@@ -231,7 +214,6 @@ class FTPServerApp(tkinter.Frame):
 
     def stop_server(self):
         self.server.close_all()
-        # self.authorizer.remove_user(self.username.get())
         self.start_button.state(['!disabled'])
         self.stop_button.state(['disabled'])
         self.current_state.set("NOT RUNNING")

@@ -35,15 +35,14 @@ class FTPClientApp(tkinter.Frame):
     def __init__(self, master=None):
         tkinter.Frame.__init__(self, master)
         self.grid(row=0, column=0)
-
-        self.initialise()
-
         # Main Frame
         # master.geometry("480x120")
         master.minsize(840,480)
         self.local_ip_addr = gethostbyname(getfqdn())
         # self.local_ip_addr = '127.0.0.1'    # debug
-        master.title("FTP Server at %s" % self.local_ip_addr)
+        master.title("FTP Client at %s" % self.local_ip_addr)
+
+        self.initialise()
 
         self.create_control_frame(rw=0, cl=0)
 
@@ -236,6 +235,7 @@ class FTPClientApp(tkinter.Frame):
 
     def share_dir(self, dir_tree_view):
         if isinstance(dir_tree_view, RootTree):
+            dir_tree_view.root_directory = self.root_dir['Local']
             # No need to reconnect because this is only for local dir
             dir_tree_view.populate_parent()
 
@@ -251,11 +251,11 @@ class FTPClientApp(tkinter.Frame):
             outfile = sys.stdout
         self.reconnect()
         if re.search('\.txt$', filename):
-            self.ftp_conn.storlines("STOR " + filename, open(filename),
-                callback=lambda : print('.'))
+            self.ftp_conn.storlines("STOR " + os.path.split(filename)[1], open(filename))
+                # callback=sys.stdout('.'))  # default mode for open() is "rt" so not mentioned
         else:
-            self.ftp_conn.storbinary("STOR " + filename, open(filename, "rb"), 1024,
-                lambda : print('.'))
+            self.ftp_conn.storbinary("STOR " + os.path.split(filename)[1], open(filename, "rb"),
+                1024) # , sys.stdout('.'))
 
     def download_file(self, filename, outfile=None):
         if not outfile:
@@ -278,8 +278,8 @@ class FTPClientApp(tkinter.Frame):
         files = self.root_dir_tree['Local'].selection()
         for fileinfo in files:
             print(self.root_dir_tree['Local'].item(fileinfo))
-            filename = self.root_dir_tree['Local'].item(fileinfo, 'text')
-            self.upload_file(filename)
+            file_details = self.root_dir_tree['Local'].item(fileinfo, 'values')
+            self.upload_file(file_details[0])
 
     def pull_file(self):
         files = self.root_dir_tree['Remote'].selection()
