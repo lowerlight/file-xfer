@@ -16,6 +16,8 @@ http://pyftpdlib.googlecode.com/files/pyftpdlib-1.3.0.tar.gz
 """
 
 VERSION = "1.0 RELEASE"
+BLOCK_SIZE = 1024
+
 import os, tkinter, threading, sys, re
 from socket import gethostbyname, getfqdn
 from functools import partial
@@ -246,16 +248,28 @@ class FTPClientApp(tkinter.Frame):
                 dir_tree_view.delete(children)
             dir_tree_view.root_directory.set(filedialog.askdirectory().replace("/" , str(os.sep)))
 
+    def progress_counter(self, buf):
+        # We don't do anything to the buf being transferred
+        self.transferred_up_to_now += BLOCK_SIZE
+        print("{0:.2f}% completed".format(
+            min(self.transferred_up_to_now/self.filesize_in_transfer*100.00, 100.00)))
+
     def upload_file(self, filename, outfile=None):
         if not outfile:
             outfile = sys.stdout
         self.reconnect()
+        self.transferred_up_to_now = 0
+        self.filesize_in_transfer = os.path.getsize(filename)
+        filename_without_path = os.path.split(filename)[1]
         if re.search('\.txt$', filename):
-            self.ftp_conn.storlines("STOR " + os.path.split(filename)[1], open(filename))
-                # callback=sys.stdout('.'))  # default mode for open() is "rt" so not mentioned
+            self.ftp_conn.storlines("STOR " + filename_without_path, open(filename),
+                self.progress_counter)
+                # default mode for open() is "rt" so not mentioned
         else:
-            self.ftp_conn.storbinary("STOR " + os.path.split(filename)[1], open(filename, "rb"),
-                1024) # , sys.stdout('.'))
+            self.ftp_conn.storbinary("STOR " + filename_without_path, open(filename, "rb"),
+                BLOCK_SIZE, self.progress_counter)
+        self.transferred_up_to_now = 0
+        self.filesize_in_transfer = 0
 
     def download_file(self, filename, outfile=None):
         if not outfile:
@@ -273,6 +287,8 @@ class FTPClientApp(tkinter.Frame):
             outfile = open(filename, 'wb')
             self.ftp_conn.retrbinary("RETR " + filename, outfile.write)
         outfile.close()
+        self.filesize_in_transfer = 0
+        # TODO: Implement a 'combined' function that write files and save them and count %age too
 
     def push_file(self):
         files = self.root_dir_tree['Local'].selection()
@@ -286,6 +302,7 @@ class FTPClientApp(tkinter.Frame):
         for fileinfo in files:
             print(self.root_dir_tree['Remote'].item(fileinfo))
             filename = self.root_dir_tree['Remote'].item(fileinfo, 'text')
+            self.filesize_in_transfer = self.root_dir_tree['Remote'].item(fileinfo, 'values')[2]
             self.download_file(filename, outfile="out_{0}".format(filename))
 
     def create_dir_tree_frame(self, rw, cl, tit):
