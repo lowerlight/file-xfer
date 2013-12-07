@@ -109,20 +109,6 @@ class FTPServerApp(tkinter.Frame):
             command=partial(self.share_dir, self.root_dir_tree['Local']))
         self.share_button.grid(row=rw, column=cl)
 
-    def push_file(self):
-        files = self.root_dir_tree['Local'].selection()
-        for fileinfo in files:
-            print(self.root_dir_tree['Local'].item(fileinfo))
-            filename = self.root_dir_tree['Local'].item(fileinfo, 'text')
-            self.upload_file(filename)
-
-    def pull_file(self):
-        files = self.root_dir_tree['Remote'].selection()
-        for fileinfo in files:
-            print(self.root_dir_tree['Remote'].item(fileinfo))
-            filename = self.root_dir_tree['Remote'].item(fileinfo, 'text')
-            self.download_file(filename, outfile="out_{0}".format(filename))
-
     def create_dir_tree_frame(self, rw, cl, tit):
         self.dir_tree_frame[tit] = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
         self.root_dir_tree[tit] = RootTree(self, columns=('fullpath','type','size'),
@@ -227,6 +213,8 @@ class FTPServerApp(tkinter.Frame):
 
     def share_dir(self, dir_tree_view):
         if isinstance(dir_tree_view, RootTree):
+            os.chdir(self.root_dir['Local'].get())
+            dir_tree_view.root_directory = self.root_dir['Local']
             # No need to reconnect because this is only for local dir
             dir_tree_view.populate_parent()
             # Open up the directory for transferring out/receiving in files

@@ -74,6 +74,7 @@ class RootTree(ttk.Treeview):
 
             self.ftp_item_dict.clear()
             curr_dir = self.root_directory.get()
+            print("Printing from ftpGUI.py")
             print(curr_dir)
             parent = self.insert('', constants.END, text=curr_dir, values=[curr_dir, 'directory'])
             self.populate_tree(parent, curr_dir, self.list_dir(curr_dir))

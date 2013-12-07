@@ -89,6 +89,9 @@ class FTPClientApp(tkinter.Frame):
         self.root_dir['Remote'] = tkinter.StringVar()
         self.root_dir['Remote'].set(os.sep)
 
+        self.transferred_up_to_now = 0
+        self.filesize_in_transfer = 0
+
     def create_control_frame(self, rw, cl):
         # Control Frame
         self.control_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
@@ -237,8 +240,11 @@ class FTPClientApp(tkinter.Frame):
 
     def share_dir(self, dir_tree_view):
         if isinstance(dir_tree_view, RootTree):
+            os.chdir(self.root_dir['Local'].get())
             dir_tree_view.root_directory = self.root_dir['Local']
-            # No need to reconnect because this is only for local dir
+            if dir_tree_view.ftp_conn:
+                dir_tree_view.ftp_conn.reconnect()
+                dir_tree_view.ftp_conn.cwd(self.root_dir['Local'].get())
             dir_tree_view.populate_parent()
 
     def select_dir(self, dir_tree_view):
@@ -249,17 +255,17 @@ class FTPClientApp(tkinter.Frame):
             dir_tree_view.root_directory.set(filedialog.askdirectory().replace("/" , str(os.sep)))
 
     def progress_counter(self, buf):
-        # We don't do anything to the buf being transferred
-        self.transferred_up_to_now += BLOCK_SIZE
+        # Do nothing to the buf being transferred
+        self.transferred_up_to_now += self.block_size
         print("{0:.2f}% completed".format(
             min(self.transferred_up_to_now/self.filesize_in_transfer*100.00, 100.00)))
 
     def upload_file(self, filename, outfile=None):
+        self.block_size = BLOCK_SIZE
         if not outfile:
             outfile = sys.stdout
         self.reconnect()
-        self.transferred_up_to_now = 0
-        self.filesize_in_transfer = os.path.getsize(filename)
+        print("Uploading {0}".format(filename))
         filename_without_path = os.path.split(filename)[1]
         if re.search('\.txt$', filename):
             self.ftp_conn.storlines("STOR " + filename_without_path, open(filename),
@@ -269,41 +275,49 @@ class FTPClientApp(tkinter.Frame):
             self.ftp_conn.storbinary("STOR " + filename_without_path, open(filename, "rb"),
                 BLOCK_SIZE, self.progress_counter)
         self.transferred_up_to_now = 0
-        self.filesize_in_transfer = 0
 
     def download_file(self, filename, outfile=None):
+        self.block_size = 8*BLOCK_SIZE  # It's possible to download 8* upload speed
         if not outfile:
             outfile = sys.stdout
         else:
             # TODO: Check if file already exists and append number?/alert user?
             pass
 
-        print(filename)
         self.reconnect()
+        print("Downloading {0}".format(filename))
         if re.search('\.txt$', filename):
             outfile = open(filename, 'w')
-            self.ftp_conn.retrlines("RETR " + filename, lambda s, w=outfile.write: w(s+"\r\n"))
+            self.ftp_conn.retrlines("RETR " + filename,
+                lambda s, w=outfile.write: w(s+"\r\n"))
         else:
             outfile = open(filename, 'wb')
-            self.ftp_conn.retrbinary("RETR " + filename, outfile.write)
+
+            def write_and_count(buf):
+                outfile.write(buf)
+                self.progress_counter(buf)
+
+            self.ftp_conn.retrbinary("RETR " + filename, write_and_count, self.block_size)
         outfile.close()
-        self.filesize_in_transfer = 0
-        # TODO: Implement a 'combined' function that write files and save them and count %age too
+        self.transferred_up_to_now = 0
 
     def push_file(self):
         files = self.root_dir_tree['Local'].selection()
         for fileinfo in files:
             print(self.root_dir_tree['Local'].item(fileinfo))
             file_details = self.root_dir_tree['Local'].item(fileinfo, 'values')
+            self.filesize_in_transfer = int(file_details[2])
             self.upload_file(file_details[0])
+            self.filesize_in_transfer = 0
 
     def pull_file(self):
         files = self.root_dir_tree['Remote'].selection()
         for fileinfo in files:
             print(self.root_dir_tree['Remote'].item(fileinfo))
-            filename = self.root_dir_tree['Remote'].item(fileinfo, 'text')
-            self.filesize_in_transfer = self.root_dir_tree['Remote'].item(fileinfo, 'values')[2]
-            self.download_file(filename, outfile="out_{0}".format(filename))
+            file_details = self.root_dir_tree['Remote'].item(fileinfo, 'values')
+            self.filesize_in_transfer = int(file_details[2])
+            self.download_file(file_details[0])
+            self.filesize_in_transfer = 0
 
     def create_dir_tree_frame(self, rw, cl, tit):
         self.dir_tree_frame[tit] = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
