@@ -24,7 +24,6 @@ import os, tkinter, threading, sys, time, re, socket, ipaddress
 from functools import partial
 from tkinter import ttk, constants, filedialog
 import tkinter.messagebox as mbox
-import pdb
 
 import ftplib
 
@@ -191,19 +190,17 @@ class FTPClientApp(tkinter.Frame):
 
         try:
             self.ftp_conn = ftplib.FTP(user=user, passwd=pswd)
-            print("h1")
+            print("FTP instance created")
             self.ftp_conn.connect(host=host, port=port_no)
             print((host, port_no))
-            print("h2")
             self.ftp_conn.login(user, pswd)
-            print("h3")
+            print("Logged in")
         except:
             mbox.showinfo(message="Connecting failed, please check IP and port.")
             return
 
         self.share_dir(self.root_dir_tree['Local'])
         self.list_remote_dir()
-        # self.ftp_conn.set_debuglevel(2)
 
         self.connect_button.state(['disabled'])
         self.disconnect_button.state(['!disabled'])
@@ -213,11 +210,6 @@ class FTPClientApp(tkinter.Frame):
         self.current_state.set("CONNECTED!")
 
     def disconnect(self, dir_tree_view):
-        user = self.username.get()
-        pswd = self.password.get()
-        host = self.listen_ip.get()
-        port = int(self.listen_port.get())
-
         try:
              self.ftp_conn.quit()
         except:
@@ -394,4 +386,3 @@ if __name__ == '__main__':
         pass
 
     sys.stdout = app.old_stdout
-    # sys.stderr = app.old_stderr

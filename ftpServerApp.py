@@ -24,8 +24,7 @@ import os, tkinter, threading, sys, re, socket
 from functools import partial
 from tkinter import ttk, constants, filedialog
 import tkinter.messagebox as mbox
-import pdb
-import logging
+
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import ThreadedFTPServer
@@ -60,13 +59,11 @@ class FTPServerApp(tkinter.Frame):
         self.create_browse_button(rw=5, cl=4)
         self.create_share_button(rw=5, cl=5)
 
-        # self.create_stdout_frame(rw=12, cl=0)
         self.create_stderr_frame(rw=12, cl=0)
 
         self.handler = FTPHandler
         self.handler.authorizer = self.authorizer
         self.handler.banner = "FTP Server ver %s is ready" % VERSION #does this work in Python3?
-        # logging.basicConfig(level=logging.DEBUG)
 
     def create_server_control_frame(self, rw, cl):
         # Server Control Frame
@@ -260,5 +257,4 @@ if __name__ == '__main__':
     except:
         pass
 
-    # sys.stdout = app.old_stdout
     sys.stderr = app.old_stderr
