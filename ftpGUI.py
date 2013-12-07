@@ -37,7 +37,7 @@ class RootTree(ttk.Treeview):
             # Just let the server determine the current path, don't pump in any path
             ftp_returned_gen = self.ftp_conn.mlsd(facts=['size'])
             for i in ftp_returned_gen:
-                self.ftp_item_dict[i[0]] = i[1]['size']
+                self.ftp_item_dict[i[0]] = i[1]['size'] # Some old FTP server don't support this
             return self.ftp_item_dict.keys()
         else:
             return os.listdir(dir_path)
@@ -74,8 +74,6 @@ class RootTree(ttk.Treeview):
 
             self.ftp_item_dict.clear()
             curr_dir = self.root_directory.get()
-            print("Printing from ftpGUI.py")
-            print(curr_dir)
             parent = self.insert('', constants.END, text=curr_dir, values=[curr_dir, 'directory'])
             self.populate_tree(parent, curr_dir, self.list_dir(curr_dir))
 

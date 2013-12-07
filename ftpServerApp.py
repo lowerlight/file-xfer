@@ -16,12 +16,16 @@ http://pyftpdlib.googlecode.com/files/pyftpdlib-1.3.0.tar.gz
 """
 
 VERSION = "1.0 RELEASE"
-import os, tkinter, threading, sys, re
-from socket import gethostbyname, getfqdn
+
+LOWEST_PORT_NO = 1025
+HIGHEST_PORT_NO = 65533
+
+import os, tkinter, threading, sys, re, socket
 from functools import partial
 from tkinter import ttk, constants, filedialog
+import tkinter.messagebox as mbox
 import pdb
-
+import logging
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import FTPHandler
 from pyftpdlib.servers import ThreadedFTPServer
@@ -36,20 +40,18 @@ class FTPServerApp(tkinter.Frame):
     def __init__(self, master=None):
         tkinter.Frame.__init__(self, master)
         self.grid(row=0, column=0)
-        # Main Frame
-        # master.geometry("480x120")
-        master.minsize(480,640)
-        self.local_ip_addr = gethostbyname(getfqdn())
-        # self.local_ip_addr = '127.0.0.1' # debug
-        self.local_port = int(2169)
-        master.title("FTP Server at %s listening at port %s " % (self.local_ip_addr, self.local_port))
 
-        # May need to move this out
+        # Main Frame
+        master.minsize(480,640)
+        self.local_ip_addr = socket.gethostbyname(socket.getfqdn())
+        self.local_port = int(2169)
+        master.title("FTP Server by TP031319 at %s" % (self.local_ip_addr,))
+
         self.authorizer = DummyAuthorizer()
         self.initialise()
 
         self.create_server_control_frame(rw=0, cl=0)
-
+        self.create_input_frame(rw=0, cl=3)
         self.create_state_frame(rw=1, cl=0)
 
         self.create_dir_frame(rw=4, cl=0)
@@ -64,6 +66,7 @@ class FTPServerApp(tkinter.Frame):
         self.handler = FTPHandler
         self.handler.authorizer = self.authorizer
         self.handler.banner = "FTP Server ver %s is ready" % VERSION #does this work in Python3?
+        logging.basicConfig(level=logging.DEBUG)
 
     def create_server_control_frame(self, rw, cl):
         # Server Control Frame
@@ -88,6 +91,16 @@ class FTPServerApp(tkinter.Frame):
 
         state_value = ttk.Label(state_frame, textvariable=self.current_state, foreground='blue')
         state_value.grid(row=rw, column=cl+1)
+
+    def create_input_frame(self, rw, cl):
+        self.input_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
+        self.input_frame.grid(row=rw, column=cl, columnspan=3, sticky=constants.W, pady=4, padx=5)
+
+        port_input_label = ttk.Label(self.input_frame,
+            text="Server Port ({0}~{1})".format(LOWEST_PORT_NO, HIGHEST_PORT_NO))
+        port_input_label.grid(row=rw, column=cl+1, sticky=constants.W)
+        self.listen_port_input = ttk.Entry(self.input_frame, width=8, textvariable=self.listen_port)
+        self.listen_port_input.grid(row=rw+1, column=cl+1)
 
     def create_dir_frame(self, rw, cl):
         self.dir_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
@@ -186,22 +199,37 @@ class FTPServerApp(tkinter.Frame):
             self.root_dir['Local'].get(), 'elradfmw')
 
     def start_server(self):
-        self.address = (self.listen_ip.get(), int(self.listen_port.get()))
+        port_no = 0
+        msg = "Please type a port number between 1025 and 65533 inclusive."
+        try:
+            port_no = int(self.listen_port.get())
+
+            if port_no < LOWEST_PORT_NO or port_no > HIGHEST_PORT_NO:
+                msg += " Port {0} is not valid.".format(port_no)
+                raise Exception(msg)
+        except:
+            mbox.showinfo(message=msg)
+            return
+
+        self.address = (self.listen_ip.get(), port_no)
         self.server = ThreadedFTPServer(self.address, self.handler)
         self.server.max_cons = 256
         self.server.max_cons_per_ip = 5
 
+        self.share_dir(self.root_dir_tree['Local'])
+
         self.start_button.state(['disabled'])
         self.stop_button.state(['!disabled'])
+        self.share_button.state(['disabled'])
         self.current_state.set("RUNNING")
-        # self.server.serve_forever() # WARNING: Must find a way to prevent this from blocking!
+
         threading.Thread(target=self.server.serve_forever).start()
-        print(self.username.get(), self.password.get())
 
     def stop_server(self):
         self.server.close_all()
         self.start_button.state(['!disabled'])
         self.stop_button.state(['disabled'])
+        self.share_button.state(['!disabled'])
         self.current_state.set("NOT RUNNING")
 
     def select_dir(self, dir_tree_view):
@@ -209,23 +237,29 @@ class FTPServerApp(tkinter.Frame):
             children = dir_tree_view.get_children('')
             if children:
                 dir_tree_view.delete(children)
+            old_dir_tree_view_root_dir = dir_tree_view.root_directory.get()
             dir_tree_view.root_directory.set(filedialog.askdirectory().replace("/" , str(os.sep)))
+            if not dir_tree_view.root_directory.get():
+                dir_tree_view.root_directory.set(old_dir_tree_view_root_dir)
 
     def share_dir(self, dir_tree_view):
         if isinstance(dir_tree_view, RootTree):
-            os.chdir(self.root_dir['Local'].get())
-            dir_tree_view.root_directory = self.root_dir['Local']
-            # No need to reconnect because this is only for local dir
-            dir_tree_view.populate_parent()
-            # Open up the directory for transferring out/receiving in files
-            # For use with WindowsAuthorizer or UnixAuthorizer:
-            # For simplicity's sake, update the homedir everytime Share button is pressed
-            # self.authorizer.override_user(self.username.get(),
-            # homedir=self.root_dir['Local'].get())
-            # For now the workaround:
-            self.authorizer.remove_user(self.username.get())
-            self.authorizer.add_user(self.username.get(), self.password.get(),
-                self.root_dir['Local'].get(), 'elradfmw')
+            try:
+                os.chdir(self.root_dir['Local'].get())
+                dir_tree_view.root_directory = self.root_dir['Local']
+                # No need to reconnect because this is only for local dir
+                dir_tree_view.populate_parent()
+                # Open up the directory for transferring out/receiving in files
+                # For use with WindowsAuthorizer or UnixAuthorizer:
+                # For simplicity's sake, update the homedir everytime Share button is pressed
+                # self.authorizer.override_user(self.username.get(),
+                # homedir=self.root_dir['Local'].get())
+                # For now the workaround:
+                self.authorizer.remove_user(self.username.get())
+                self.authorizer.add_user(self.username.get(), self.password.get(),
+                    self.root_dir['Local'].get(), 'elradfmw')
+            except FileNotFoundError:
+                mbox.showinfo(message="Invalid Directory!")
 
 if __name__ == '__main__':
     root = tkinter.Tk()

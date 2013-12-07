@@ -17,11 +17,13 @@ http://pyftpdlib.googlecode.com/files/pyftpdlib-1.3.0.tar.gz
 
 VERSION = "1.0 RELEASE"
 BLOCK_SIZE = 1024
+LOWEST_PORT_NO = 1025
+HIGHEST_PORT_NO = 65533
 
-import os, tkinter, threading, sys, re
-from socket import gethostbyname, getfqdn
+import os, tkinter, threading, sys, re, socket, ipaddress
 from functools import partial
 from tkinter import ttk, constants, filedialog
+import tkinter.messagebox as mbox
 import pdb
 
 import ftplib
@@ -38,18 +40,16 @@ class FTPClientApp(tkinter.Frame):
         tkinter.Frame.__init__(self, master)
         self.grid(row=0, column=0)
         # Main Frame
-        # master.geometry("480x120")
         master.minsize(840,480)
-        self.local_ip_addr = gethostbyname(getfqdn())
-        # self.local_ip_addr = '127.0.0.1'    # debug
-        master.title("FTP Client at %s" % self.local_ip_addr)
+        self.local_ip_addr = socket.gethostbyname(socket.getfqdn())
+        master.title("FTP Client by TP031319 at %s" % self.local_ip_addr)
 
         self.initialise()
 
         self.create_control_frame(rw=0, cl=0)
 
         self.create_state_frame(rw=1, cl=0)
-        self.create_input_frame(rw=3, cl=3)
+        self.create_input_frame(rw=0, cl=3)
 
         self.create_remote_dir_button(rw=1, cl=3)
 
@@ -111,22 +111,14 @@ class FTPClientApp(tkinter.Frame):
         self.input_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
         self.input_frame.grid(row=rw, column=cl, columnspan=3, sticky=constants.W, pady=4, padx=5)
 
-        # ttk.Label(self.input_frame, text="User Name").grid(row=2, column=0)
-        # self.username_input = ttk.Entry(self.input_frame, textvariable=self.username)
-        # self.username_input.grid(row=rw, column=cl)
-
-        # ttk.Label(self.input_frame, text="Password").grid(row=2, column=1)
-        # self.password_input = ttk.Entry(self.input_frame, textvariable=self.password)
-        # self.password_input.grid(row=rw, column=cl+1)
-
         ttk.Label(self.input_frame, text="Server Address").grid(row=rw, column=cl,
             sticky=constants.W)
-        self.listen_ip_input = ttk.Entry(self.input_frame, textvariable=self.listen_ip)
+        self.listen_ip_input = ttk.Entry(self.input_frame, width=40, textvariable=self.listen_ip)
         self.listen_ip_input.grid(row=rw+1, column=cl)
 
         ttk.Label(self.input_frame, text="Server Port").grid(row=rw, column=cl+1,
             sticky=constants.W)
-        self.listen_port_input = ttk.Entry(self.input_frame, textvariable=self.listen_port)
+        self.listen_port_input = ttk.Entry(self.input_frame, width=8, textvariable=self.listen_port)
         self.listen_port_input.grid(row=rw+1, column=cl+1)
 
     def create_state_frame(self, rw, cl):
@@ -144,7 +136,7 @@ class FTPClientApp(tkinter.Frame):
         self.browse_button.grid(row=rw, column=cl)
 
     def create_share_button(self, rw, cl):
-        self.share_button = ttk.Button(self.dir_frame, text="Share",
+        self.share_button = ttk.Button(self.dir_frame, text="Refresh Local",
             command=partial(self.share_dir, self.root_dir_tree['Local']))
         self.share_button.grid(row=rw, column=cl)
 
@@ -154,50 +146,69 @@ class FTPClientApp(tkinter.Frame):
         ttk.Label(self.dir_frame, text="Local Directory").grid(row=rw, column=cl,
             sticky=constants.W)
 
-        # TODO: Rename this to Local root dir later.
-        # Now still cannot imagine how to get the remote root directory and display the tree
         self.root_dir_input = ttk.Entry(self.dir_frame, width=64,
             textvariable=self.root_dir['Local'])
         self.root_dir_input.grid(row=rw+1, column=cl)
 
     def create_push_file_button(self, rw, cl):
-        self.push_file_button = ttk.Button(self, text="Push >>",
+        self.push_file_button = ttk.Button(self, text="Upload >>", state=['disabled'],
             command=self.push_file)
         self.push_file_button.grid(row=rw, column=cl)
 
     def create_pull_file_button(self, rw, cl):
-        self.pull_file_button = ttk.Button(self, text="Pull <<",
+        self.pull_file_button = ttk.Button(self, text="Download <<", state=['disabled'],
             command=self.pull_file)
         self.pull_file_button.grid(row=rw, column=cl)
 
     def list_remote_dir(self):
         assert isinstance(self.root_dir_tree['Remote'], RootTree)
         self.reconnect()
+        self.root_dir['Remote'].set(self.ftp_conn.pwd())
+        print("Ans from server {0}".format(self.root_dir['Remote'].get()))
+        self.root_dir_tree['Remote'].root_directory = self.root_dir['Remote']
         self.root_dir_tree['Remote'].populate_parent()
 
     def connect(self):
         user = self.username.get()
         pswd = self.password.get()
-        host = self.listen_ip.get()
-        port = int(self.listen_port.get())
+
+        port_no = 0
+        msg = "Please type a valid IP and a port number between 1025 and 65533 inclusive."
+        try:
+            host = self.listen_ip.get()
+            port_no = int(self.listen_port.get())
+
+            if port_no < LOWEST_PORT_NO or port_no > HIGHEST_PORT_NO:
+                msg += " Port {0} is not valid.".format(port_no)
+                raise Exception(msg)
+
+            msg += " IPv4 and IPv6 are accepted, but {0} is not valid.".format(host)
+            ipaddress.ip_address(host)  # throw Exception for invalid IP
+        except:
+            mbox.showinfo(message=msg)
+            return
 
         try:
             self.ftp_conn = ftplib.FTP(user=user, passwd=pswd)
             print("h1")
-            self.ftp_conn.connect(host=host, port=port)
-            print((host, port))
+            self.ftp_conn.connect(host=host, port=port_no)
+            print((host, port_no))
             print("h2")
             self.ftp_conn.login(user, pswd)
             print("h3")
         except:
-            print("Login failed, check username, password, IP and port.")
+            mbox.showinfo(message="Connecting failed, please check IP and port.")
             return
 
-        self.root_dir_tree['Remote'].root_directory.set(str(os.sep))
+        self.share_dir(self.root_dir_tree['Local'])
         self.list_remote_dir()
+        self.ftp_conn.set_debuglevel(2)
 
         self.connect_button.state(['disabled'])
         self.disconnect_button.state(['!disabled'])
+        self.remote_dir_button.state(['!disabled'])
+        self.push_file_button.state(['!disabled'])
+        self.pull_file_button.state(['!disabled'])
         self.current_state.set("CONNECTED!")
 
     def disconnect(self, dir_tree_view):
@@ -213,6 +224,9 @@ class FTPClientApp(tkinter.Frame):
         finally:
             self.connect_button.state(['!disabled'])
             self.disconnect_button.state(['disabled'])
+            self.remote_dir_button.state(['disabled'])
+            self.push_file_button.state(['disabled'])
+            self.pull_file_button.state(['disabled'])
             self.current_state.set("DISCONNECTED")
 
             if isinstance(dir_tree_view, RootTree):
@@ -221,38 +235,44 @@ class FTPClientApp(tkinter.Frame):
                     dir_tree_view.delete(children)
 
     def reconnect(self):
-        self.user = self.username.get()
-        self.pswd = self.password.get()
-        self.host = self.listen_ip.get()
-        self.port = int(self.listen_port.get())
+        user = self.username.get()
+        pswd = self.password.get()
+        host = self.listen_ip.get()
+        port = int(self.listen_port.get())
 
         print(self.root_dir_tree['Remote'].ftp_conn.sock)   # TO ANSWER: why the sock go missing?!
         if not self.root_dir_tree['Remote'].ftp_conn.sock:
-            self.root_dir_tree['Remote'].ftp_conn.connect(host=self.host, port=self.port)
+            self.root_dir_tree['Remote'].ftp_conn.connect(host=host, port=port)
             print("Reconnected!")
-            self.root_dir_tree['Remote'].ftp_conn.login(self.user, self.pswd)
+            self.root_dir_tree['Remote'].ftp_conn.login(user=user, passwd=pswd)
             print("Reloggedin!")
 
     def create_remote_dir_button(self, rw, cl):
-        self.remote_dir_button = ttk.Button(self, text="Refresh Remote",
+        self.remote_dir_button = ttk.Button(self, text="Refresh Remote", state=['disabled'],
             command=self.list_remote_dir)
         self.remote_dir_button.grid(row=rw, column=cl, sticky=constants.W, pady=4, padx=5)
 
     def share_dir(self, dir_tree_view):
         if isinstance(dir_tree_view, RootTree):
-            os.chdir(self.root_dir['Local'].get())
-            dir_tree_view.root_directory = self.root_dir['Local']
-            if dir_tree_view.ftp_conn:
-                dir_tree_view.ftp_conn.reconnect()
-                dir_tree_view.ftp_conn.cwd(self.root_dir['Local'].get())
-            dir_tree_view.populate_parent()
+            try:
+                os.chdir(self.root_dir['Local'].get())
+                dir_tree_view.root_directory = self.root_dir['Local']
+                if dir_tree_view.ftp_conn:
+                    dir_tree_view.ftp_conn.reconnect()
+                    dir_tree_view.ftp_conn.cwd(self.root_dir['Local'].get())
+                dir_tree_view.populate_parent()
+            except FileNotFoundError:
+                mbox.showinfo(message="Invalid Directory!")
 
     def select_dir(self, dir_tree_view):
         if isinstance(dir_tree_view, RootTree):
             children = dir_tree_view.get_children('')
             if children:
                 dir_tree_view.delete(children)
+            old_dir_tree_view_root_dir = dir_tree_view.root_directory.get()
             dir_tree_view.root_directory.set(filedialog.askdirectory().replace("/" , str(os.sep)))
+            if not dir_tree_view.root_directory.get():
+                dir_tree_view.root_directory.set(old_dir_tree_view_root_dir)
 
     def progress_counter(self, buf):
         # Do nothing to the buf being transferred
@@ -324,7 +344,6 @@ class FTPClientApp(tkinter.Frame):
         self.root_dir_tree[tit] = RootTree(self, columns=('fullpath','type','size'),
             displaycolumns='size', root_dir=self.root_dir[tit],
             conn=self.ftp_conn if tit=='Remote' else None)
-        print(tit, self.root_dir_tree[tit])
 
         yScrollBar = ttk.Scrollbar(self.root_dir_tree[tit], orient=constants.VERTICAL,
             command=self.root_dir_tree[tit].yview)
