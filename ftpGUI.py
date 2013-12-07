@@ -28,7 +28,6 @@ class RootTree(ttk.Treeview):
         self.root_directory = root_dir
         if conn:
             assert isinstance(conn, ftplib.FTP)
-            print("Assigning connection")
             self.ftp_conn = conn
         self.bind('<<TreeviewOpen>>', self.update_tree)
 
@@ -74,6 +73,7 @@ class RootTree(ttk.Treeview):
 
             self.ftp_item_dict.clear()
             curr_dir = self.root_directory.get()
+            print(curr_dir)
             parent = self.insert('', constants.END, text=curr_dir, values=[curr_dir, 'directory'])
             self.populate_tree(parent, curr_dir, self.list_dir(curr_dir))
 
@@ -81,9 +81,11 @@ class RootTree(ttk.Treeview):
         # event: unused variable
         node_id = self.focus()
         if self.parent(node_id):
-            # TODO: double click cause warning, but either need to bind it with another action
-            # or replace with a try catch block later
-            top_child = self.get_children(node_id)[0]
+            try:
+                top_child = self.get_children(node_id)[0]
+            except:
+                # Double clicking on a child raises this, not sure why
+                return
             if self.item(top_child, option='text') == 'dummy':
                 self.delete(top_child)
                 tree_path = self.set(node_id, 'fullpath')

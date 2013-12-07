@@ -44,7 +44,7 @@ class FTPServerApp(tkinter.Frame):
         # Main Frame
         master.minsize(480,640)
         self.local_ip_addr = socket.gethostbyname(socket.getfqdn())
-        self.local_port = int(2169)
+        self.local_port = int(LOWEST_PORT_NO)
         master.title("FTP Server by TP031319 at %s" % (self.local_ip_addr,))
 
         self.authorizer = DummyAuthorizer()
@@ -60,13 +60,13 @@ class FTPServerApp(tkinter.Frame):
         self.create_browse_button(rw=5, cl=4)
         self.create_share_button(rw=5, cl=5)
 
-        # self.create_stdout_frame(rw=8, cl=0)
-        # self.create_stderr_frame(rw=10, cl=0)
+        # self.create_stdout_frame(rw=12, cl=0)
+        self.create_stderr_frame(rw=12, cl=0)
 
         self.handler = FTPHandler
         self.handler.authorizer = self.authorizer
         self.handler.banner = "FTP Server ver %s is ready" % VERSION #does this work in Python3?
-        logging.basicConfig(level=logging.DEBUG)
+        # logging.basicConfig(level=logging.DEBUG)
 
     def create_server_control_frame(self, rw, cl):
         # Server Control Frame
@@ -127,49 +127,39 @@ class FTPServerApp(tkinter.Frame):
         self.root_dir_tree[tit] = RootTree(self, columns=('fullpath','type','size'),
             displaycolumns='size', root_dir=self.root_dir[tit],
             conn=self.ftp_conn if tit=='Remote' else None)
-        print(tit, self.root_dir_tree[tit])
-
-        yScrollBar = ttk.Scrollbar(self.root_dir_tree[tit], orient=constants.VERTICAL,
-            command=self.root_dir_tree[tit].yview)
-        xScrollBar = ttk.Scrollbar(self.root_dir_tree[tit], orient=constants.HORIZONTAL,
-            command=self.root_dir_tree[tit].xview)
-        self.root_dir_tree[tit]['yscroll'] = yScrollBar.set
-        self.root_dir_tree[tit]['xscroll'] = xScrollBar.set
 
         self.root_dir_tree[tit].heading('#0', text='Directory', anchor=constants.W)
         self.root_dir_tree[tit].heading('size', text='Size', anchor=constants.W)
-        self.root_dir_tree[tit].column('size', stretch=0, width=60)
+        self.root_dir_tree[tit].column('#0', stretch=0, minwidth=200, width=440)
+        self.root_dir_tree[tit].column('size', stretch=1, minwidth=40, width=80)
 
         self.dir_tree_frame[tit].grid(row=rw, column=cl, sticky=constants.W, pady=4, padx=5)
         ttk.Label(self.dir_tree_frame[tit], text=tit).grid(row=rw, column=cl, sticky=constants.W)
         self.root_dir_tree[tit].grid(in_=self.dir_tree_frame[tit], row=rw+1, column=cl,
             sticky=constants.NSEW)
-        # yScrollBar.grid(row=rw+1, column=cl+3, sticky=constants.NS)
-        # xScrollBar.grid(row=rw+3, column=cl, sticky=constants.EW)
+
+        yScrollBar = ttk.Scrollbar(self.dir_tree_frame[tit], orient=constants.VERTICAL,
+            command=self.root_dir_tree[tit].yview)
+        xScrollBar = ttk.Scrollbar(self.dir_tree_frame[tit], orient=constants.HORIZONTAL,
+            command=self.root_dir_tree[tit].xview)
+        self.root_dir_tree[tit]['yscroll'] = yScrollBar.set
+        self.root_dir_tree[tit]['xscroll'] = xScrollBar.set
+
+        yScrollBar.grid(row=rw, column=cl+2, rowspan=3, sticky=constants.NS)
+        xScrollBar.grid(row=rw+3, column=cl, rowspan=1, sticky=constants.EW)
         # set frame resizing priorities
-        # self.dir_tree_frame[tit].rowconfigure(0, weight=1)
-        # self.dir_tree_frame[tit].columnconfigure(0, weight=1)
+        self.dir_tree_frame[tit].rowconfigure(0, weight=1)
+        self.dir_tree_frame[tit].columnconfigure(0, weight=1)
 
-    # Enable this frame later
-    # def create_stdout_frame(self, rw, cl):
-    #     self.stdout_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
-    #     self.stdout_frame.grid(row=rw, column=cl)
-    #
-    #     self.old_stdout = sys.stdout
-    #     self.text = tkinter.Text(self, width=60, height=8, wrap='none')
-    #     self.text.grid(row=rw+1, column=cl)
-    #     sys.stdout = StdoutRedirector(self.text)
+    def create_stderr_frame(self, rw, cl):
+        self.stderr_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
+        self.stderr_frame.grid(row=rw, column=cl)
 
-    # Enable this frame later
-    # def create_stderr_frame(self, rw, cl):
-    #     self.stderr_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
-    #     self.stderr_frame.grid(row=rw, column=cl)
-    #
-    #     self.old_stderr = sys.stderr
-    #
-    #     self.err = tkinter.Text(self, width=60, height=8, wrap='none')
-    #     self.err.grid(row=rw+1, column=cl)
-    #     sys.stderr = StdoutRedirector(self.err)
+        self.old_stderr = sys.stderr
+
+        self.err = tkinter.Text(self, width=64, height=12, wrap='none')
+        self.err.grid(row=rw+1, column=cl, pady=4, padx=5)
+        sys.stderr = StdoutRedirector(self.err)
 
     def initialise(self):
         # Initial values
@@ -271,4 +261,4 @@ if __name__ == '__main__':
         pass
 
     # sys.stdout = app.old_stdout
-    # sys.stderr = app.old_stderr
+    sys.stderr = app.old_stderr

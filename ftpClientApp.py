@@ -20,7 +20,7 @@ BLOCK_SIZE = 1024
 LOWEST_PORT_NO = 1025
 HIGHEST_PORT_NO = 65533
 
-import os, tkinter, threading, sys, re, socket, ipaddress
+import os, tkinter, threading, sys, time, re, socket, ipaddress
 from functools import partial
 from tkinter import ttk, constants, filedialog
 import tkinter.messagebox as mbox
@@ -40,7 +40,7 @@ class FTPClientApp(tkinter.Frame):
         tkinter.Frame.__init__(self, master)
         self.grid(row=0, column=0)
         # Main Frame
-        master.minsize(840,480)
+        master.minsize(960,640)
         self.local_ip_addr = socket.gethostbyname(socket.getfqdn())
         master.title("FTP Client by TP031319 at %s" % self.local_ip_addr)
 
@@ -66,6 +66,8 @@ class FTPClientApp(tkinter.Frame):
         self.create_browse_button(rw=4, cl=3)
         self.create_share_button(rw=4, cl=4)
 
+        self.create_stdout_frame(rw=8, cl=0)
+
     def initialise(self):
         # Initial values
         self.username = tkinter.StringVar()
@@ -84,7 +86,7 @@ class FTPClientApp(tkinter.Frame):
         self.listen_ip.set("127.0.0.1")
 
         self.listen_port = tkinter.StringVar()
-        self.listen_port.set("21")
+        self.listen_port.set(str(LOWEST_PORT_NO))
 
         self.root_dir['Remote'] = tkinter.StringVar()
         self.root_dir['Remote'].set(os.sep)
@@ -164,7 +166,6 @@ class FTPClientApp(tkinter.Frame):
         assert isinstance(self.root_dir_tree['Remote'], RootTree)
         self.reconnect()
         self.root_dir['Remote'].set(self.ftp_conn.pwd())
-        print("Ans from server {0}".format(self.root_dir['Remote'].get()))
         self.root_dir_tree['Remote'].root_directory = self.root_dir['Remote']
         self.root_dir_tree['Remote'].populate_parent()
 
@@ -202,7 +203,7 @@ class FTPClientApp(tkinter.Frame):
 
         self.share_dir(self.root_dir_tree['Local'])
         self.list_remote_dir()
-        self.ftp_conn.set_debuglevel(2)
+        # self.ftp_conn.set_debuglevel(2)
 
         self.connect_button.state(['disabled'])
         self.disconnect_button.state(['!disabled'])
@@ -240,12 +241,12 @@ class FTPClientApp(tkinter.Frame):
         host = self.listen_ip.get()
         port = int(self.listen_port.get())
 
-        print(self.root_dir_tree['Remote'].ftp_conn.sock)   # TO ANSWER: why the sock go missing?!
+        # print(self.root_dir_tree['Remote'].ftp_conn.sock)   # TO ANSWER: why the sock go missing?!
         if not self.root_dir_tree['Remote'].ftp_conn.sock:
             self.root_dir_tree['Remote'].ftp_conn.connect(host=host, port=port)
-            print("Reconnected!")
+            # print("Reconnected!")
             self.root_dir_tree['Remote'].ftp_conn.login(user=user, passwd=pswd)
-            print("Reloggedin!")
+            # print("Reloggedin!")
 
     def create_remote_dir_button(self, rw, cl):
         self.remote_dir_button = ttk.Button(self, text="Refresh Remote", state=['disabled'],
@@ -282,6 +283,7 @@ class FTPClientApp(tkinter.Frame):
 
     def upload_file(self, filename, outfile=None):
         self.block_size = BLOCK_SIZE
+        start_time = 0
         if not outfile:
             outfile = sys.stdout
         self.reconnect()
@@ -292,12 +294,16 @@ class FTPClientApp(tkinter.Frame):
                 self.progress_counter)
                 # default mode for open() is "rt" so not mentioned
         else:
+            start_time = time.time()
             self.ftp_conn.storbinary("STOR " + filename_without_path, open(filename, "rb"),
                 BLOCK_SIZE, self.progress_counter)
+        print("{0} bytes uploaded in {1:.2f} seconds".format(self.filesize_in_transfer,
+            (time.time() - start_time)))
         self.transferred_up_to_now = 0
 
     def download_file(self, filename, outfile=None):
         self.block_size = 8*BLOCK_SIZE  # It's possible to download 8* upload speed
+        start_time = 0
         if not outfile:
             outfile = sys.stdout
         else:
@@ -316,15 +322,16 @@ class FTPClientApp(tkinter.Frame):
             def write_and_count(buf):
                 outfile.write(buf)
                 self.progress_counter(buf)
-
+            start_time = time.time()
             self.ftp_conn.retrbinary("RETR " + filename, write_and_count, self.block_size)
         outfile.close()
+        print("{0} bytes downloaded in {1:.2f} seconds".format(self.filesize_in_transfer,
+            (time.time() - start_time)))
         self.transferred_up_to_now = 0
 
     def push_file(self):
         files = self.root_dir_tree['Local'].selection()
         for fileinfo in files:
-            print(self.root_dir_tree['Local'].item(fileinfo))
             file_details = self.root_dir_tree['Local'].item(fileinfo, 'values')
             self.filesize_in_transfer = int(file_details[2])
             self.upload_file(file_details[0])
@@ -333,7 +340,6 @@ class FTPClientApp(tkinter.Frame):
     def pull_file(self):
         files = self.root_dir_tree['Remote'].selection()
         for fileinfo in files:
-            print(self.root_dir_tree['Remote'].item(fileinfo))
             file_details = self.root_dir_tree['Remote'].item(fileinfo, 'values')
             self.filesize_in_transfer = int(file_details[2])
             self.download_file(file_details[0])
@@ -345,48 +351,38 @@ class FTPClientApp(tkinter.Frame):
             displaycolumns='size', root_dir=self.root_dir[tit],
             conn=self.ftp_conn if tit=='Remote' else None)
 
-        yScrollBar = ttk.Scrollbar(self.root_dir_tree[tit], orient=constants.VERTICAL,
-            command=self.root_dir_tree[tit].yview)
-        xScrollBar = ttk.Scrollbar(self.root_dir_tree[tit], orient=constants.HORIZONTAL,
-            command=self.root_dir_tree[tit].xview)
-        self.root_dir_tree[tit]['yscroll'] = yScrollBar.set
-        self.root_dir_tree[tit]['xscroll'] = xScrollBar.set
-
         self.root_dir_tree[tit].heading('#0', text='Directory', anchor=constants.W)
         self.root_dir_tree[tit].heading('size', text='Size', anchor=constants.W)
-        self.root_dir_tree[tit].column('size', stretch=0, width=40)
+        self.root_dir_tree[tit].column('#0', stretch=0, minwidth=120, width=280)
+        self.root_dir_tree[tit].column('size', stretch=1, minwidth=40, width=80)
 
         self.dir_tree_frame[tit].grid(row=rw, column=cl, sticky=constants.W, pady=4, padx=5)
         ttk.Label(self.dir_tree_frame[tit], text=tit).grid(row=rw, column=cl, sticky=constants.W)
         self.root_dir_tree[tit].grid(in_=self.dir_tree_frame[tit], row=rw+1, column=cl,
             sticky=constants.NSEW)
-        # yScrollBar.grid(row=rw+1, column=cl+3, sticky=constants.NS)
-        # xScrollBar.grid(row=rw+3, column=cl, sticky=constants.EW)
+
+        yScrollBar = ttk.Scrollbar(self.dir_tree_frame[tit], orient=constants.VERTICAL,
+            command=self.root_dir_tree[tit].yview)
+        xScrollBar = ttk.Scrollbar(self.dir_tree_frame[tit], orient=constants.HORIZONTAL,
+            command=self.root_dir_tree[tit].xview)
+        self.root_dir_tree[tit]['yscroll'] = yScrollBar.set
+        self.root_dir_tree[tit]['xscroll'] = xScrollBar.set
+
+        yScrollBar.grid(row=rw, column=cl+2, rowspan=3, sticky=constants.NS)
+        xScrollBar.grid(row=rw+3, column=cl, rowspan=1, sticky=constants.EW)
         # set frame resizing priorities
-        # self.dir_tree_frame[tit].rowconfigure(0, weight=1)
-        # self.dir_tree_frame[tit].columnconfigure(0, weight=1)
+        self.dir_tree_frame[tit].rowconfigure(0, weight=1)
+        self.dir_tree_frame[tit].columnconfigure(0, weight=1)
 
     # Enable this frame later
-    # def create_stdout_frame(self, rw, cl):
-    #     self.stdout_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
-    #     self.stdout_frame.grid(row=rw, column=cl)
-    #
-    #     self.old_stdout = sys.stdout
-    #     self.text = tkinter.Text(self, width=40, height=10, wrap='none')
-    #     self.text.grid(row=rw+1, column=cl)
-    #     sys.stdout = StdoutRedirector(self.text)
+    def create_stdout_frame(self, rw, cl):
+        self.stdout_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
+        self.stdout_frame.grid(row=rw, column=cl)
 
-    # Enable this frame later
-    # def create_stderr_frame(self, rw, cl):
-    #     self.stderr_frame = ttk.Frame(self, relief=constants.SOLID, borderwidth=1)
-    #     self.stderr_frame.grid(row=rw, column=cl)
-    #
-    #     self.old_stderr = sys.stderr
-    #
-    #     self.err = tkinter.Text(self, width=60, height=10, wrap='none')
-    #     self.err.grid(row=rw+1, column=cl+1)
-    #     sys.stderr = StdoutRedirector(self.err)
-
+        self.old_stdout = sys.stdout
+        self.text = tkinter.Text(self, width=64, height=12, wrap='none')
+        self.text.grid(row=rw+1, column=cl, pady=4, padx=5)
+        sys.stdout = StdoutRedirector(self.text)
 
 if __name__ == '__main__':
     root = tkinter.Tk()
@@ -397,5 +393,5 @@ if __name__ == '__main__':
     except:
         pass
 
-    # sys.stdout = app.old_stdout
+    sys.stdout = app.old_stdout
     # sys.stderr = app.old_stderr
